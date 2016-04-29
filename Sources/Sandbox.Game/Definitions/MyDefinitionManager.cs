@@ -44,6 +44,8 @@ using Sandbox.Game;
 using VRage.Game;
 using VRage.Game.Definitions;
 using VRage.Game.Definitions.Animation;
+using VRage.Game.ObjectBuilders.ComponentSystem;
+using Sandbox.Game.EntityComponents;
 
 #endregion
 
@@ -73,6 +75,11 @@ namespace Sandbox.Definitions
         internal DefinitionSet LoadingSet
         {
             get { return m_currentLoadingSet; }
+        }
+
+        public override MyDefinitionSet GetLoadingSet()
+        {
+            return LoadingSet;
         }
 
         public bool Loading { get; private set; }
@@ -120,9 +127,29 @@ namespace Sandbox.Definitions
             MySandboxGame.Log.WriteLine("MyDefinitionManager.PreloadDefinitions() - END");
         }
 
+        public void PrepareBaseDefinitions()
+        {
+            MySandboxGame.Log.WriteLine("MyDefinitionManager.PrepareBaseDefinitions() - START");
+
+            using (MySandboxGame.Log.IndentUsing(LoggingOptions.NONE))
+            {
+                //Pre-load base definitions
+                GetDefinitionBuilders(MyModContext.BaseGame);
+            }
+
+            MySandboxGame.Log.WriteLine("MyDefinitionManager.PrepareBaseDefinitions() - END");
+        }
+
         public void LoadScenarios()
         {
             MySandboxGame.Log.WriteLine("MyDefinitionManager.LoadScenarios() - START");
+
+            ProfilerShort.Begin("Wait for preload to complete");
+            while (MySandboxGame.IsPreloading)
+            {
+                System.Threading.Thread.Sleep(1);
+            }
+            ProfilerShort.End();
 
             using (MySandboxGame.Log.IndentUsing(LoggingOptions.NONE))
             {
@@ -162,6 +189,13 @@ namespace Sandbox.Definitions
         {
             MySandboxGame.Log.WriteLine("MyDefinitionManager.LoadData() - START");
 
+            ProfilerShort.Begin("Wait for preload to complete");
+            while (MySandboxGame.IsPreloading)
+            {
+                System.Threading.Thread.Sleep(1);
+            }
+            ProfilerShort.End();
+
             UnloadData();
             Loading = true;
             LoadScenarios();
@@ -173,9 +207,13 @@ namespace Sandbox.Definitions
                     m_modDefinitionSets.Add("", new DefinitionSet());
                 var baseDefinitionSet = m_modDefinitionSets[""];
 
-                ProfilerShort.Begin("Parse Definitions");
+                ProfilerShort.Begin("Parse Base Definitions");
 
                 LoadDefinitions(MyModContext.BaseGame, baseDefinitionSet);
+
+                ProfilerShort.End();
+
+                ProfilerShort.Begin("Logging mods");
 
                 MySandboxGame.Log.WriteLine(string.Format("List of used mods ({0}) - START", mods.Count));
                 MySandboxGame.Log.IncreaseIndent();
@@ -186,6 +224,10 @@ namespace Sandbox.Definitions
                 MySandboxGame.Log.WriteLine("List of used mods - END");
 
                 MyAnalyticsHelper.SetUsedMods(mods);
+
+                ProfilerShort.End();
+
+                ProfilerShort.Begin("Parse Mod Definitions");
 
                 foreach (var mod in mods)
                 {
@@ -207,13 +249,15 @@ namespace Sandbox.Definitions
                 }
 
                 ProfilerShort.BeginNextBlock("Test Models");
-                if (MyFakes.TEST_MODELS)
+                if (MyFakes.TEST_MODELS && (Sandbox.AppCode.MyExternalAppBase.Static == null))
                 {
                     var s = Stopwatch.GetTimestamp();
                     TestCubeBlockModels();
                     var delta = (Stopwatch.GetTimestamp() - s) / (double)Stopwatch.Frequency;
                     Debug.WriteLine("Models tested in: {0} seconds", delta);
                 }
+
+                CheckCharacterPickup();
 
                 if (MyFakes.ENABLE_ALL_IN_SURVIVAL)
                 {
@@ -256,14 +300,78 @@ namespace Sandbox.Definitions
             MySandboxGame.Log.WriteLine("MyDefinitionManager.LoadData() - END");
         }
 
+        /// <summary>
+        /// This is here only for a while to warn modders about the pickup component change that we did.
+        /// </summary>
+        private void CheckCharacterPickup()
+        {
+            if (MyPerGameSettings.Game != GameEnum.ME_GAME) return;
+
+            // Add characters that we have in the game and that we know are not picking stuff
+            HashSet<MyDefinitionId> ignoredCharacters = new HashSet<MyDefinitionId>();
+            ignoredCharacters.Add(new MyDefinitionId(typeof(MyObjectBuilder_Character), "Peasant_male"));
+            ignoredCharacters.Add(new MyDefinitionId(typeof(MyObjectBuilder_Character), "Medieval_barbarian"));
+            ignoredCharacters.Add(new MyDefinitionId(typeof(MyObjectBuilder_Character), "Medieval_deer"));
+            ignoredCharacters.Add(new MyDefinitionId(typeof(MyObjectBuilder_Character), "Medieval_wolf"));
+
+            MyContainerDefinition containerDef = null;
+            string error = "Character definition {0} is missing a pickup component! " +
+            "You will not be able to pickup things with this character! " +
+            "See the player character in EntityContainers.sbc and EntityComponents.sbc for an example.";
+            
+            foreach (var pair in m_definitions.m_characters)
+            {
+                var characterDef = pair.Value;
+                if (ignoredCharacters.Contains(characterDef.Id)) continue;
+
+                bool hasContainerDef = TryGetContainerDefinition(characterDef.Id, out containerDef);
+
+                if (!hasContainerDef)
+                {
+                    MyDefinitionErrors.Add(MyModContext.UnknownContext, String.Format(error, characterDef.Id.ToString()), TErrorSeverity.Warning);
+                    continue;
+                }
+
+                bool foundPickup = false;
+                foreach (var component in containerDef.DefaultComponents)
+                {
+                    Type componentType = (Type)component.BuilderType;
+                    if (typeof(MyObjectBuilder_CharacterPickupComponent).IsAssignableFrom(componentType))
+                    {
+                        foundPickup = true;
+                        break;
+                    }
+                }
+
+                if (!foundPickup)
+                {
+                    MyDefinitionErrors.Add(MyModContext.UnknownContext, String.Format(error, characterDef.Id.ToString()), TErrorSeverity.Warning);
+                }
+            }
+        }
+
         private void TestCubeBlockModels()
         {
+            //*
+
+            // Spread testing of models over the available workers
+            ParallelTasks.Parallel.ForEach<string>(GetDefinitionPairNames(), delegate(string pair)
+            {
+                var group = GetDefinitionGroup(pair);
+                TestCubeBlockModel(group.Small);
+                TestCubeBlockModel(group.Large);
+            });
+             
+            /*/
+
             foreach (var pair in GetDefinitionPairNames())
             {
                 var group = GetDefinitionGroup(pair);
                 TestCubeBlockModel(group.Small);
                 TestCubeBlockModel(group.Large);
             }
+
+            //*/
         }
 
         private void TestCubeBlockModel(MyCubeBlockDefinition block)
@@ -314,7 +422,58 @@ namespace Sandbox.Definitions
             }
 
             return preloadSet;
-        } 
+        }
+
+        private List<Tuple<MyObjectBuilder_Definitions, string>> m_preloadedDefinitionBuilders = null;
+        private List<Tuple<MyObjectBuilder_Definitions, string>> GetDefinitionBuilders(MyModContext context, HashSet<string> preloadSet = null)
+        {
+            if (m_preloadedDefinitionBuilders != null && context == MyModContext.BaseGame && preloadSet == null)
+                return m_preloadedDefinitionBuilders;
+
+            var definitionBuilders = new List<Tuple<MyObjectBuilder_Definitions, string>>(30);
+            foreach (var file in MyFileSystem.GetFiles(context.ModPathData, "*.sbc", VRage.FileSystem.MySearchOption.AllDirectories))
+            {
+                if (preloadSet != null && !preloadSet.Contains(Path.GetFileName(file))) continue;
+
+                if (Path.GetFileName(file) == "DefinitionsToPreload.sbc") continue;
+                context.CurrentFile = file;
+
+                ProfilerShort.Begin("Verify Integrity");
+                MyDataIntegrityChecker.HashInFile(file);
+                MyObjectBuilder_Definitions builder = null;
+
+                ProfilerShort.BeginNextBlock("Try Parse as Prefab");
+                try
+                {
+                    builder = CheckPrefabs(file);
+                }
+                catch (Exception e)
+                {
+                    FailModLoading(context, innerException: e);
+                    return null;
+                }
+
+                ProfilerShort.BeginNextBlock("Parse");
+                if (builder == null)
+                {
+                    builder = Load<MyObjectBuilder_Definitions>(file);
+                }
+
+                if (builder == null)
+                {
+                    FailModLoading(context);
+                    return null;
+                }
+
+                definitionBuilders.Add(new Tuple<MyObjectBuilder_Definitions, string>(builder, file));
+                ProfilerShort.End();
+            }
+
+            if (context == MyModContext.BaseGame && preloadSet == null)
+                m_preloadedDefinitionBuilders = definitionBuilders;
+
+            return definitionBuilders;
+        }
 
         private void LoadDefinitions(MyModContext context, DefinitionSet definitionSet, bool failOnDebug = true, bool isPreload = false)
         {
@@ -333,43 +492,9 @@ namespace Sandbox.Definitions
             definitionSet.Context = context;
 
             ProfilerShort.Begin("Load definitions from files");
-            var definitionsBuilders = new List<Tuple<MyObjectBuilder_Definitions, string>>(30);
-            foreach (var file in MyFileSystem.GetFiles(context.ModPathData, "*.sbc", VRage.FileSystem.MySearchOption.AllDirectories))
-            {
-                if (isPreload && !preloadSet.Contains(Path.GetFileName(file))) continue;
-                if (Path.GetFileName(file) == "DefinitionsToPreload.sbc") continue;
-                context.CurrentFile = file;
-
-                ProfilerShort.Begin("Verify Integrity");
-                MyDataIntegrityChecker.HashInFile(file);
-                MyObjectBuilder_Definitions builder = null;
-
-                ProfilerShort.BeginNextBlock("Try Parse as Prefab");
-                try
-                {
-                    builder = CheckPrefabs(file);
-                }
-                catch (Exception e)
-                {
-                    FailModLoading(context, innerException: e);
-                    return;
-                }
-
-                ProfilerShort.BeginNextBlock("Parse");
-                if (builder == null)
-                {
-                    builder = Load<MyObjectBuilder_Definitions>(file);
-                }
-
-                if (builder == null)
-                {
-                    FailModLoading(context);
-                    return;
-                }
-
-                definitionsBuilders.Add(new Tuple<MyObjectBuilder_Definitions, string>(builder, file));
-                ProfilerShort.End();
-            }
+            var definitionsBuilders = GetDefinitionBuilders(context, preloadSet);
+            if (definitionsBuilders == null)
+                return;
 
             ProfilerShort.BeginNextBlock("Postprocessing");
 
@@ -390,7 +515,8 @@ namespace Sandbox.Definitions
                     foreach (var builder in definitionsBuilders)
                     {
                         context.CurrentFile = builder.Item2;
-                        phases[i](builder.Item1, context, definitionSet, failOnDebug);
+						var phase = phases[i];
+                        phase(builder.Item1, context, definitionSet, failOnDebug);
                     }
                     ProfilerShort.End();
                 }
@@ -752,6 +878,18 @@ namespace Sandbox.Definitions
                 InitSoundCategories(context, definitionSet.m_definitionsById, objBuilder.SoundCategories, failOnDebug);
             }
 
+            if (objBuilder.ShipSoundGroups != null)
+            {
+                MySandboxGame.Log.WriteLine("Loading ship sound groups");
+                InitShipSounds(context, definitionSet.m_shipSounds, objBuilder.ShipSoundGroups, failOnDebug);
+            }
+
+            if (objBuilder.ShipSoundSystem != null)
+            {
+                MySandboxGame.Log.WriteLine("Loading ship sound groups");
+                InitShipSoundSystem(context, ref definitionSet.m_shipSoundSystem, objBuilder.ShipSoundSystem, failOnDebug);
+            }
+
             if (objBuilder.LCDTextures != null)
             {
                 MySandboxGame.Log.WriteLine("Loading LCD texture categories");
@@ -836,6 +974,13 @@ namespace Sandbox.Definitions
                 MySandboxGame.Log.WriteLine("Loading battle definition");
                 Check(failOnDebug, "Battle", failOnDebug, WARNING_ON_REDEFINITION_MESSAGE);
                 InitBattle(context, ref definitionSet.m_battleDefinition, objBuilder.Battle, failOnDebug);
+            }
+
+            if (objBuilder.DecalGlobals != null)
+            {
+                MySandboxGame.Log.WriteLine("Loading decal global definitions");
+                Check(failOnDebug, "DecalGlobals", failOnDebug, WARNING_ON_REDEFINITION_MESSAGE);
+                InitDecalGlobals(context, objBuilder.DecalGlobals, failOnDebug);
             }
 
             if (objBuilder.Decals != null)
@@ -1080,27 +1225,51 @@ namespace Sandbox.Definitions
 
         private void LoadPostProcess()
         {
+            ProfilerShort.Begin("CreateTransparentMaterials");
             CreateTransparentMaterials();
+            ProfilerShort.BeginNextBlock("InitVoxelMaterials");
             InitVoxelMaterials();
+            ProfilerShort.BeginNextBlock("InitVoxelMaterialChanges");
             InitVoxelMaterialChanges();
+            ProfilerShort.BeginNextBlock("InitRopeDefinitions");
             InitRopeDefinitions();
+            ProfilerShort.BeginNextBlock("InitBlockGroups");
             InitBlockGroups();
+            ProfilerShort.BeginNextBlock("PostprocessComponentGroups");
             PostprocessComponentGroups();
+            ProfilerShort.BeginNextBlock("PostprocessComponentBlocks");
             PostprocessComponentBlocks();
+            ProfilerShort.BeginNextBlock("PostprocessBlueprints");
             PostprocessBlueprints();
+            ProfilerShort.BeginNextBlock("AddEntriesToBlueprintClasses");
             AddEntriesToBlueprintClasses();
+            ProfilerShort.BeginNextBlock("AddEntriesToEnvironmentItemClasses");
             AddEntriesToEnvironmentItemClasses();
+            ProfilerShort.BeginNextBlock("PairPhysicalAndHandItems");
             PairPhysicalAndHandItems();
+            ProfilerShort.BeginNextBlock("CheckWeaponRelatedDefinitions");
             CheckWeaponRelatedDefinitions();
+            ProfilerShort.BeginNextBlock("UpdateShipSounds");
+            SetShipSoundSystem();
+            ProfilerShort.BeginNextBlock("MoveNonPublicBlocksToSpecialCategory");
             MoveNonPublicBlocksToSpecialCategory();
             if (MyAudio.Static != null)
+            {
+                ProfilerShort.BeginNextBlock("MyAudio.Static.ReloadData");
                 MyAudio.Static.ReloadData(MyAudioExtensions.GetSoundDataFromDefinitions(), MyAudioExtensions.GetEffectData());
+            }
+            ProfilerShort.BeginNextBlock("PostprocessPirateAntennas");
             PostprocessPirateAntennas();
+            ProfilerShort.BeginNextBlock("InitMultiBlockDefinitions");
             InitMultiBlockDefinitions();
+            ProfilerShort.BeginNextBlock("CreateMapMultiBlockDefinitionToBlockDefinition");
             CreateMapMultiBlockDefinitionToBlockDefinition();
+            ProfilerShort.BeginNextBlock("PostprocessAllDefinitions");
             PostprocessAllDefinitions();
 
+            ProfilerShort.BeginNextBlock("AfterPostprocess");
             AfterPostprocess();
+            ProfilerShort.End();
         }
 
         private void PostprocessAllDefinitions()
@@ -1663,6 +1832,43 @@ namespace Sandbox.Definitions
             }
         }
 
+        private static void InitShipSounds(MyModContext context,
+            DefinitionDictionary<MyShipSoundsDefinition> output, MyObjectBuilder_ShipSoundsDefinition[] shipGroups, bool failOnDebug = true)
+        {
+            var res = new MyShipSoundsDefinition[shipGroups.Length];
+
+            for (int i = 0; i < shipGroups.Length; ++i)
+            {
+                res[i] = InitDefinition<MyShipSoundsDefinition>(context, shipGroups[i]);
+
+                Check(!output.ContainsKey(res[i].Id), res[i].Id, failOnDebug);
+                output[res[i].Id] = res[i];
+            }
+        }
+
+        private static void InitShipSoundSystem(MyModContext context,
+            ref MyShipSoundSystemDefinition output, MyObjectBuilder_ShipSoundSystemDefinition shipSystem, bool failOnDebug = true)
+        {
+            var res = InitDefinition<MyShipSoundSystemDefinition>(context, shipSystem);
+            output = res;
+        }
+
+        public void SetShipSoundSystem()
+        {
+            MyShipSoundComponent.ClearShipSounds();
+            foreach (DefinitionSet LoadingSet in m_modDefinitionSets.Values)
+            {
+                if (LoadingSet.m_shipSounds != null)
+                {
+                    foreach (var set in LoadingSet.m_shipSounds)
+                        MyShipSoundComponent.AddShipSounds(set.Value);
+                }
+                if (LoadingSet.m_shipSoundSystem != null)
+                    MyShipSoundComponent.SetDefinition(LoadingSet.m_shipSoundSystem);
+            }
+            MyShipSoundComponent.ActualizeGroups();
+        }
+
         private static void InitAnimations(MyModContext context,
             DefinitionDictionary<MyDefinitionBase> output, MyObjectBuilder_AnimationDefinition[] animations, Dictionary<string, Dictionary<string, MyAnimationDefinition>> animationsBySkeletonType, bool failOnDebug = true)
         {
@@ -1675,7 +1881,7 @@ namespace Sandbox.Definitions
                 Check(!output.ContainsKey(res[i].Id), res[i].Id, failOnDebug);
                 output[res[i].Id] = res[i];
 
-                if (context.IsBaseGame)
+                if (context.IsBaseGame && !MyFinalBuildConstants.IS_OFFICIAL)
                     Static.m_currentLoadingSet.AddDefinition(res[i]); // compatibility
                 else
                     Static.m_currentLoadingSet.AddOrRelaceDefinition(res[i]);
@@ -2082,17 +2288,33 @@ namespace Sandbox.Definitions
             output = destructionDef;
         }
 
-        private static void InitDecals(MyModContext context, MyObjectBuilder_DecalDefinition[] objBuilder, bool failOnDebug = true)
+        private static void InitDecals(MyModContext context, MyObjectBuilder_DecalDefinition[] objBuilders, bool failOnDebug = true)
         {
             List<string> names = new List<string>();
             List<MyDecalMaterialDesc> desc = new List<MyDecalMaterialDesc>();
-            foreach (var m in objBuilder)
+            foreach (var obj in objBuilders)
             {
-                names.Add(m.Id.SubtypeName);
-                desc.Add(m.Material);
+                if (obj.MaxSize < obj.MinSize)
+                    obj.MaxSize = obj.MinSize;
+
+                MyDecalMaterial material = new MyDecalMaterial(obj.Material,
+                    MyStringHash.GetOrCompute(obj.Target), MyStringHash.GetOrCompute(obj.Source),
+                    obj.MinSize, obj.MaxSize, obj.Depth, obj.Rotation);
+
+                desc.Add(obj.Material);
+                names.Add(material.GetStringId());
+
+                MyDecalMaterials.AddDecalMaterial(material);
             }
 
             VRageRender.MyRenderProxy.RegisterDecals(names, desc);
+        }
+
+        private static void InitDecalGlobals(MyModContext context, MyObjectBuilder_DecalGlobalsDefinition objBuilder, bool failOnDebug = true)
+        {
+            MyDecalGlobals globals = new MyDecalGlobals();
+            globals.DecalQueueSize = objBuilder.DecalQueueSize;
+            VRageRender.MyRenderProxy.SetDecalGlobals(globals);
         }
 
         public void SetDefaultNavDef(MyCubeBlockDefinition blockDefinition)
@@ -2330,7 +2552,7 @@ namespace Sandbox.Definitions
                 }
                 else
                     materialDefinition.Init(material, context);
-                m_definitions.m_physicalMaterialsByName.Add(materialDefinition.Id.SubtypeName, materialDefinition);
+                m_definitions.m_physicalMaterialsByName[materialDefinition.Id.SubtypeName] = materialDefinition;
             }
         }
 
@@ -2411,9 +2633,17 @@ namespace Sandbox.Definitions
             {
                 // Modders can have their character defined with MyObjectBuilder_CharacterDefinition
                 if (typeof(MyObjectBuilder_CharacterDefinition).IsAssignableFrom(characters[i].Id.TypeId))
+                {
                     characters[i].Id.TypeId = typeof(MyObjectBuilder_Character);
+                }
                 res[i] = InitDefinition<MyCharacterDefinition>(context, characters[i]);
-
+                if(res[i].Id.TypeId.IsNull)
+                {
+                    MySandboxGame.Log.WriteLine("Invalid character Id found in mod !");
+                    MyDefinitionErrors.Add(context, "Invalid character Id found in mod ! ", TErrorSeverity.Error);
+                    continue;
+                }
+                
                 Check(!outputCharacters.ContainsKey(res[i].Name), res[i].Name, failOnDebug);
                 outputCharacters[res[i].Name] = res[i];
 
@@ -2677,7 +2907,7 @@ namespace Sandbox.Definitions
                 i++;
             }
 
-            ob.Icon = cubeBlockDefinition.Icon;
+            ob.Icons = cubeBlockDefinition.Icons;
             ob.DisplayName = cubeBlockDefinition.DisplayNameEnum.HasValue ? cubeBlockDefinition.DisplayNameEnum.Value.ToString() : cubeBlockDefinition.DisplayNameText;
             ob.Public = cubeBlockDefinition.Public;
 
@@ -2774,6 +3004,9 @@ namespace Sandbox.Definitions
         {
             if (!defId.TypeId.IsNull)
             {
+                definition = base.GetDefinition<T>(defId);
+                if (definition != null) return true;
+
                 MyDefinitionBase definitionBase;
                 if (m_definitions.m_definitionsById.TryGetValue(defId, out definitionBase))
                 {
@@ -3254,6 +3487,15 @@ namespace Sandbox.Definitions
             return m_definitions.m_definitionsById[id] as MyPhysicalItemDefinition;
         }
 
+        public void TryGetDefinitionsByTypeId(MyObjectBuilderType typeId, HashSet<MyDefinitionId> definitions)
+        {
+            foreach (MyDefinitionId definition in m_definitions.m_definitionsById.Keys)
+            {
+                if (definition.TypeId == typeId && !definitions.Contains(definition))
+                    definitions.Add(definition);
+            }
+        }
+
         public MyEnvironmentItemDefinition GetEnvironmentItemDefinition(MyDefinitionId id)
         {
             Debug.Assert(m_definitions.m_definitionsById.ContainsKey(id));
@@ -3273,6 +3515,18 @@ namespace Sandbox.Definitions
             Debug.Assert(m_definitions.m_definitionsById.ContainsKey(id));
             CheckDefinition<MyAmmoMagazineDefinition>(ref id);
             return m_definitions.m_definitionsById[id] as MyAmmoMagazineDefinition;
+        }
+
+        public MyShipSoundsDefinition GetShipSoundsDefinition(MyDefinitionId id)
+        {
+            Debug.Assert(m_definitions.m_definitionsById.ContainsKey(id));
+            CheckDefinition<MyShipSoundsDefinition>(ref id);
+            return m_definitions.m_definitionsById[id] as MyShipSoundsDefinition;
+        }
+
+        public MyShipSoundSystemDefinition GetShipSoundSystemDefinition
+        {
+            get { return m_definitions.m_shipSoundSystem; }
         }
 
         public MyWeaponDefinition GetWeaponDefinition(MyDefinitionId id)
@@ -3375,7 +3629,6 @@ namespace Sandbox.Definitions
         {
             if (!m_definitions.m_physicalItemsByHandItemId.ContainsKey(handItemId))
             {
-                MySandboxGame.Log.WriteLine(string.Format("No physical item for hand item '{0}'", handItemId));
                 return null;
             }
             return m_definitions.m_physicalItemsByHandItemId[handItemId];
@@ -3521,6 +3774,9 @@ namespace Sandbox.Definitions
             return group;
         }
 
+        /// <summary>
+        /// Returns the substitution definition for a "base" (i.e. required) component that has multiple other components (i.e. providing components) substituting it
+        /// </summary>
         public bool TryGetComponentSubstitutionDefinition(MyDefinitionId componentDefId, out MyComponentSubstitutionDefinition substitutionDefinition)
         {
             substitutionDefinition = null;
@@ -3536,6 +3792,9 @@ namespace Sandbox.Definitions
             return false;
         }
 
+        /// <summary>
+        /// Returns the substitution definition for a component that can serve as a providing component for some other "base" (required) component
+        /// </summary>
         public bool TryGetProvidingComponentDefinition(MyDefinitionId componentDefId, out MyComponentSubstitutionDefinition substitutionDefinition)
         {
             substitutionDefinition = null;

@@ -256,8 +256,11 @@ namespace Sandbox.Game.Gui
 
         public static void RemoveSound(MyGuiSounds cueEnum)
         {
-            if (m_sound != null && m_sound.CueEnum == MyGuiAudio.GetCue(cueEnum))
+            if (m_sound != null && m_sound.CueEnum == MyGuiAudio.GetCue(cueEnum) && m_sound.IsPlaying == false)
+            {
                 m_sound.Stop();
+                m_sound = null;
+            }
             m_soundQueue.RemoveAll(new System.Predicate<MyGuiSounds>((cue) => { return cue == cueEnum; }));
         }
 
@@ -379,7 +382,9 @@ namespace Sandbox.Game.Gui
             if (MySession.Static.ControlledEntity.Entity is MyCharacter)
             {
                 cue = MyGuiSounds.HudVocEnergyLow;
-                if (MySession.Static.LocalCharacter != null && MySession.Static.LocalCharacter.Definition.NeedsOxygen && MySession.Static.Settings.EnableOxygen)
+                if (MySession.Static.LocalCharacter != null
+                    && MySession.Static.LocalCharacter.OxygenComponent != null
+                    && MySession.Static.LocalCharacter.OxygenComponent.NeedsOxygenFromSuit && MySession.Static.Settings.EnableOxygen)
                 {
                     text = MySpaceTexts.NotificationSuitEnergyLowNoDamage;
                 }
@@ -394,7 +399,8 @@ namespace Sandbox.Game.Gui
                     cue = MyGuiSounds.HudVocStationFuelLow;
                 else
                     cue = MyGuiSounds.HudVocShipFuelLow;
-                if (MySession.Static.LocalCharacter != null && MySession.Static.LocalCharacter.Definition.NeedsOxygen && MySession.Static.Settings.EnableOxygen)
+                if (MySession.Static.LocalCharacter != null && MySession.Static.LocalCharacter.OxygenComponent != null 
+                    && MySession.Static.LocalCharacter.OxygenComponent.NeedsOxygenFromSuit && MySession.Static.Settings.EnableOxygen)
                 {
                     text = MySpaceTexts.NotificationShipEnergyLowNoDamage;
                 }
@@ -417,7 +423,8 @@ namespace Sandbox.Game.Gui
             if (MySession.Static.ControlledEntity.Entity is MyCharacter || MySession.Static.ControlledEntity == null)
             {
                 cue = MyGuiSounds.HudVocEnergyCrit;
-                if (MySession.Static.LocalCharacter != null && MySession.Static.LocalCharacter.Definition.NeedsOxygen && MySession.Static.Settings.EnableOxygen)
+                if (MySession.Static.LocalCharacter != null && MySession.Static.LocalCharacter.OxygenComponent != null
+                    && MySession.Static.LocalCharacter.OxygenComponent.NeedsOxygenFromSuit && MySession.Static.Settings.EnableOxygen)
                 {
                     text = MySpaceTexts.NotificationSuitEnergyCriticalNoDamage;
                 }
@@ -432,7 +439,8 @@ namespace Sandbox.Game.Gui
                     cue = MyGuiSounds.HudVocStationFuelCrit;
                 else
                     cue = MyGuiSounds.HudVocShipFuelCrit;
-                if (MySession.Static.LocalCharacter != null && MySession.Static.LocalCharacter.Definition.NeedsOxygen && MySession.Static.Settings.EnableOxygen)
+                if (MySession.Static.LocalCharacter != null && MySession.Static.LocalCharacter.OxygenComponent != null
+                    && MySession.Static.LocalCharacter.OxygenComponent.NeedsOxygenFromSuit && MySession.Static.Settings.EnableOxygen)
                 {
                     text = MySpaceTexts.NotificationShipEnergyCriticalNoDamage;
                 }

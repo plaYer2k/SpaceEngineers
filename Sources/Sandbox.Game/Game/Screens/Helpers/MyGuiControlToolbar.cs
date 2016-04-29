@@ -18,29 +18,30 @@ namespace Sandbox.Game.Screens.Helpers
 {
     public class MyGuiControlToolbar : MyGuiControlBase
     {
-        private static StringBuilder m_textCache = new StringBuilder();
+        protected static StringBuilder m_textCache = new StringBuilder();
 
-        private MyGuiControlGrid m_toolbarItemsGrid;
-        private MyGuiControlLabel m_selectedItemLabel;
-        private MyGuiControlPanel m_colorVariantPanel;
-        private MyGuiControlContextMenu m_contextMenu;
-        private List<MyGuiControlLabel> m_pageLabelList = new List<MyGuiControlLabel>();
-        private MyToolbar m_shownToolbar;
+        protected MyGuiControlGrid m_toolbarItemsGrid;
+        protected MyGuiControlLabel m_selectedItemLabel;
+        protected MyGuiControlPanel m_colorVariantPanel;
+        protected MyGuiControlContextMenu m_contextMenu;
+        protected List<MyGuiControlLabel> m_pageLabelList = new List<MyGuiControlLabel>();
+        protected MyToolbar m_shownToolbar;
         public MyToolbar ShownToolbar
         {
-            get 
-            { 
-                return m_shownToolbar; 
+            get
+            {
+                return m_shownToolbar;
             }
         }
         public MyGuiControlGrid ToolbarGrid
         {
-            get {
+            get
+            {
                 return m_toolbarItemsGrid;
             }
         }
 
-        private int m_contextMenuItemIndex = -1;
+        protected int m_contextMenuItemIndex = -1;
 
         public bool DrawNumbers { get { return MyToolbarComponent.CurrentToolbar.DrawNumbers; } }
         public Func<int, Sandbox.Graphics.GUI.MyGuiControlGrid.ColoredIcon> GetSymbol { get { return MyToolbarComponent.CurrentToolbar.GetSymbol; } }
@@ -60,7 +61,7 @@ namespace Sandbox.Game.Screens.Helpers
         {
             base.OnVisibleChanged();
             MyToolbarComponent.IsToolbarControlShown = this.Visible;
-        }        
+        }
 
         public override void OnRemoving()
         {
@@ -75,9 +76,9 @@ namespace Sandbox.Game.Screens.Helpers
                 m_shownToolbar.CurrentPageChanged -= Toolbar_CurrentPageChanged;
                 m_shownToolbar = null;
             }
-            
+
             MyToolbarComponent.IsToolbarControlShown = false;
-            
+
             base.OnRemoving();
         }
 
@@ -104,7 +105,7 @@ namespace Sandbox.Game.Screens.Helpers
 
         public override void Draw(float transitionAlpha, float backgroundTransitionAlpha)
         {
-			Color c = (new Vector3(MyPlayer.SelectedColor.X, MathHelper.Clamp(MyPlayer.SelectedColor.Y + 0.8f, 0f, 1f), MathHelper.Clamp(MyPlayer.SelectedColor.Z + 0.55f, 0f, 1f))).HSVtoColor();
+            Color c = (new Vector3(MyPlayer.SelectedColor.X, MathHelper.Clamp(MyPlayer.SelectedColor.Y + 0.8f, 0f, 1f), MathHelper.Clamp(MyPlayer.SelectedColor.Z + 0.55f, 0f, 1f))).HSVtoColor();
             m_colorVariantPanel.ColorMask = c.ToVector4();
             base.Draw(transitionAlpha, backgroundTransitionAlpha);
         }
@@ -186,7 +187,7 @@ namespace Sandbox.Game.Screens.Helpers
             return m_toolbarItemsGrid == grid;
         }
 
-        private void ShowToolbar(MyToolbar toolbar)
+        public void ShowToolbar(MyToolbar toolbar)
         {
             if (m_shownToolbar != null)
             {
@@ -216,15 +217,15 @@ namespace Sandbox.Game.Screens.Helpers
                 var slotCount = toolbar.SlotCount;
                 m_toolbarItemsGrid.ColumnsCount = slotCount + (toolbar.ShowHolsterSlot ? 1 : 0);
                 for (int i = 0; i < slotCount; ++i)
-                    SetGridItemAt(i, toolbar.GetSlotItem(i));
+                    SetGridItemAt(i, toolbar.GetSlotItem(i), clear: true);
                 m_selectedItemLabel.OriginAlign = MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_BOTTOM;
                 m_colorVariantPanel.OriginAlign = MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_BOTTOM;
                 m_colorVariantPanel.Visible = MyFakes.ENABLE_BLOCK_COLORING; // character != null;
-                
-                if (toolbar.ShowHolsterSlot)
-                    SetGridItemAt(slotCount, new MyToolbarItemEmpty(), @"Textures\GUI\Icons\HideWeapon.dds", null, MyTexts.GetString(MyCommonTexts.HideWeapon));
 
-                if(toolbar.PageCount > 1)
+                if (toolbar.ShowHolsterSlot)
+                    SetGridItemAt(slotCount, new MyToolbarItemEmpty(), new string[] { @"Textures\GUI\Icons\HideWeapon.dds" }, null, MyTexts.GetString(MyCommonTexts.HideWeapon));
+
+                if (toolbar.PageCount > 1)
                     for (int i = 0; i < toolbar.PageCount; ++i)
                     {
                         m_textCache.Clear();
@@ -300,54 +301,67 @@ namespace Sandbox.Game.Screens.Helpers
             }
         }
 
-        private void SetGridItemAt(int slot, MyToolbarItem item)
+        private void SetGridItemAt(int slot, MyToolbarItem item, bool clear = false)
         {
             if (item != null)
-                SetGridItemAt(slot, item, item.Icon, item.SubIcon, item.DisplayName.ToString(), GetSymbol(slot));
+                SetGridItemAt(slot, item, item.Icons, item.SubIcon, item.DisplayName.ToString(), GetSymbol(slot), clear);
             else
-                SetGridItemAt(slot, null, null, null, null, GetSymbol(slot));
+                SetGridItemAt(slot, null, null, null, null, GetSymbol(slot), clear);
         }
 
-        private void SetGridItemAt(int slot, MyToolbarItem item, string icon, string subicon, String tooltip, Sandbox.Graphics.GUI.MyGuiControlGrid.ColoredIcon? symbol = null)
+        protected virtual void SetGridItemAt(int slot, MyToolbarItem item, string[] icons, string subicon, String tooltip, MyGuiControlGrid.ColoredIcon? symbol = null, bool clear = false)
         {
             var gridItem = m_toolbarItemsGrid.GetItemAt(slot);
+
             if (gridItem == null)
             {
                 gridItem = new MyGuiControlGrid.Item(
-                    icon: icon,
+                    icons: icons,
                     subicon: subicon,
                     toolTip: tooltip,
                     userData: item);
-                if(DrawNumbers)
-                    gridItem.AddText(MyToolbarComponent.GetSlotControlText(slot));
-                //Ammo amount in toolbar
-                if (item != null)
-                    gridItem.AddText(item.IconText, MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_BOTTOM);
-                else
-                    gridItem.ClearText(MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_BOTTOM);
-                gridItem.Enabled = (item != null) ? item.Enabled : true;
-                if(symbol.HasValue)
-                    gridItem.AddIcon(symbol.Value, MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP);
+                //By Gregory: Changed to IconText for weapon check MyToolbarItemWeapon IconText override
+                //if (item != null)
+                //    gridItem.AddText(item.IconText, MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_BOTTOM);
+                //else
+                //    gridItem.ClearText(MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_BOTTOM);
+                //gridItem.Enabled = (item != null) ? item.Enabled : true;
+                //if (symbol.HasValue)
+                //    gridItem.AddIcon(symbol.Value, MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP);
                 m_toolbarItemsGrid.SetItemAt(slot, gridItem);
             }
             else
             {
                 gridItem.UserData = item;
-                gridItem.Icon = icon;
+                gridItem.Icons = icons;
                 gridItem.SubIcon = subicon;
                 if (gridItem.ToolTip == null)
                     gridItem.ToolTip = new MyToolTips();
                 gridItem.ToolTip.ToolTips.Clear();
                 gridItem.ToolTip.AddToolTip(tooltip);
-                //Ammo amount in toolbar
-                if (item != null)
-                    gridItem.AddText(item.IconText, MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_BOTTOM);
-                else
-                    gridItem.ClearText(MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_BOTTOM);
-                gridItem.Enabled = (item != null) ? item.Enabled : true;
-                if (symbol.HasValue)
-                    gridItem.AddIcon(symbol.Value, MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP);
+                //By Gregory: Changed to IconText for weapon check MyToolbarItemWeapon IconText override
+                //if (item != null)
+                //    gridItem.AddText(item.IconText, MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_BOTTOM);
+                //else
+                //    gridItem.ClearText(MyGuiDrawAlignEnum.HORISONTAL_RIGHT_AND_VERTICAL_BOTTOM);
+                //gridItem.Enabled = (item != null) ? item.Enabled : true;
+                //if (symbol.HasValue)
+                //    gridItem.AddIcon(symbol.Value, MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP);
             }
+
+            if (item == null || clear)
+                gridItem.ClearAllText();
+
+            if (DrawNumbers)
+                gridItem.AddText(MyToolbarComponent.GetSlotControlText(slot));
+
+            if (item != null)
+                item.FillGridItem(gridItem);
+
+            gridItem.Enabled = (item != null) ? item.Enabled : true;
+            if (symbol.HasValue)
+                gridItem.AddIcon(symbol.Value, MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP);
+
         }
 
         private void RemoveToolbarItem(int slot)
@@ -379,7 +393,7 @@ namespace Sandbox.Game.Screens.Helpers
         }
 
         private void Toolbar_ItemChanged(MyToolbar toolbar, MyToolbar.IndexArgs args)
-        {            
+        {
             UpdateItemAtIndex(toolbar, args.ItemIndex);
         }
 
@@ -402,7 +416,7 @@ namespace Sandbox.Game.Screens.Helpers
             int slot = toolbar.IndexToSlot(index);
             if (!toolbar.IsValidIndex(index) || !toolbar.IsValidSlot(slot)) return;
 
-            SetGridItemAt(slot, toolbar[index]);
+            SetGridItemAt(slot, toolbar[index], clear: true);
             if (toolbar.SelectedSlot == slot)
                 RefreshSelectedItem(toolbar);
         }
@@ -429,13 +443,13 @@ namespace Sandbox.Game.Screens.Helpers
             {
                 var slot = toolbar.IndexToSlot(args.ItemIndex);
                 if (slot != -1)
-                    m_toolbarItemsGrid.GetItemAt(slot).Icon = toolbar.GetItemIcon(args.ItemIndex);
+                    m_toolbarItemsGrid.GetItemAt(slot).Icons = toolbar.GetItemIcons(args.ItemIndex);
             }
             else
             {
                 for (int i = 0; i < m_toolbarItemsGrid.ColumnsCount; ++i)
                 {
-                    m_toolbarItemsGrid.GetItemAt(i).Icon = toolbar.GetItemIcon(toolbar.SlotToIndex(i));
+                    m_toolbarItemsGrid.GetItemAt(i).Icons = toolbar.GetItemIcons(toolbar.SlotToIndex(i));
                 }
             }
         }
@@ -448,7 +462,7 @@ namespace Sandbox.Game.Screens.Helpers
 
             for (int i = 0; i < MyToolbarComponent.CurrentToolbar.SlotCount; ++i)
             {
-                SetGridItemAt(i, toolbar.GetSlotItem(i));
+                SetGridItemAt(i, toolbar.GetSlotItem(i), clear: true);
             }
         }
 
@@ -558,6 +572,6 @@ namespace Sandbox.Game.Screens.Helpers
 
         #endregion
 
-       
+
     }
 }

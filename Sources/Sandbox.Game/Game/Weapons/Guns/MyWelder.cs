@@ -22,6 +22,7 @@ using VRage.ObjectBuilders;
 using Sandbox.Engine.Networking;
 using VRage.Game;
 using VRage.Game.Entity;
+using Sandbox.Game.Audio;
 
 #endregion
 
@@ -158,7 +159,7 @@ namespace Sandbox.Game.Weapons
 
             MyHud.BlockInfo.MissingComponentIndex = 0;
             MyHud.BlockInfo.BlockName = block.BlockDefinition.DisplayNameText;
-            MyHud.BlockInfo.BlockIcon = block.BlockDefinition.Icon;
+            MyHud.BlockInfo.BlockIcons = block.BlockDefinition.Icons;
             MyHud.BlockInfo.BlockIntegrity = 0.01f;
             MyHud.BlockInfo.CriticalIntegrity = block.BlockDefinition.CriticalIntegrityRatio;
             MyHud.BlockInfo.CriticalComponentIndex = block.BlockDefinition.CriticalGroup;
@@ -173,7 +174,7 @@ namespace Sandbox.Game.Weapons
                 var component = new MyHudBlockInfo.ComponentInfo();
                 component.DefinitionId = info.Component.Id;
                 component.ComponentName = info.Component.DisplayNameText;
-                component.Icon = info.Component.Icon;
+                component.Icons = info.Component.Icons;
                 component.TotalCount = info.TotalCount;
                 component.MountedCount = 0;
                 component.StockpileCount = 0;
@@ -278,11 +279,11 @@ namespace Sandbox.Game.Weapons
             return null;
         }
 
-        public override void Shoot(MyShootActionEnum action, Vector3 direction, string gunAction)
+        public override void Shoot(MyShootActionEnum action, Vector3 direction, Vector3D? overrideWeaponPos, string gunAction)
         {
             MyAnalyticsHelper.ReportActivityStartIf(!m_activated, this.Owner, "Welding", "Character", "HandTools","Welder",true);
 
-            base.Shoot(action, direction, gunAction);
+            base.Shoot(action, direction, overrideWeaponPos, gunAction);
 
             if (action == MyShootActionEnum.PrimaryAction/* && IsPreheated*/  )
             {
@@ -299,7 +300,7 @@ namespace Sandbox.Game.Weapons
                     var info = FindProjectedBlock();
                     if (info.raycastResult == MyProjectorBase.BuildCheckResult.OK)
                     {
-                        if (MySession.Static.CreativeMode || MyBlockBuilderBase.SpectatorIsBuilding || Owner.CanStartConstruction(info.hitCube.BlockDefinition)||MySession.Static.IsAdminModeEnabled)
+                        if (MySession.Static.CreativeMode || MyBlockBuilderBase.SpectatorIsBuilding || Owner.CanStartConstruction(info.hitCube.BlockDefinition) || MySession.Static.IsAdminModeEnabled(Sync.MyId))
                         {
                             info.cubeProjector.Build(info.hitCube, Owner.ControllerInfo.Controller.Player.Identity.IdentityId, Owner.EntityId);
                         }
@@ -415,7 +416,11 @@ namespace Sandbox.Game.Weapons
                 {
                     float maxAllowedBoneMovement = WELDER_MAX_REPAIR_BONE_MOVEMENT_SPEED * ToolCooldownMs * 0.001f;
                     if (Owner != null && Owner.ControllerInfo != null)
+                    {
                         block.IncreaseMountLevel(WeldAmount, Owner.ControllerInfo.ControllingIdentityId, CharacterInventory, maxAllowedBoneMovement);
+                        if (MySession.Static != null && Owner == MySession.Static.LocalCharacter && MyMusicController.Static != null)
+                            MyMusicController.Static.Building(250);
+                    }
                 }
             }
             

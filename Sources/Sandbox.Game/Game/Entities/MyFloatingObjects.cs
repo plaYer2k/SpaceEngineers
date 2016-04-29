@@ -16,7 +16,7 @@ using VRageMath;
 using VRage;
 using Sandbox.Engine.Utils;
 using Sandbox.Game.Gui;
-using Sandbox.Common.Components;
+
 using VRage.Voxels;
 using VRage.Game.Components;
 using VRage.ObjectBuilders;
@@ -571,6 +571,10 @@ namespace Sandbox.Game.Entities
                 {
                     RemoveFloatingObject(obj);
                 }
+                else
+                {
+                    obj.SendCloseRequest();
+                }
             }
             else
             {
@@ -596,11 +600,13 @@ namespace Sandbox.Game.Entities
             {
                 obj.Item.Amount -= amount;
                 obj.RefreshDisplayName();
+                //In this case do not use obj.WasRemovedFromWorld = true; cause it causes the object not being picked up after removed by the collector
             }
             else
+            {
                 obj.Close();
-
-            obj.WasRemovedFromWorld = true;
+                obj.WasRemovedFromWorld = true;
+            }
 
             m_requestedEntities.Remove(obj.EntityId);
             m_stableObjectsClient.Remove(obj);

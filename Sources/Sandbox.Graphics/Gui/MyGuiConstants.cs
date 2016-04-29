@@ -11,6 +11,7 @@ namespace Sandbox.Graphics.GUI
     {
         public static readonly Vector2 GUI_OPTIMAL_SIZE = new Vector2(1600f, 1200f);
         public const float DOUBLE_CLICK_DELAY = 500;
+        public const float CLICK_RELEASE_DELAY = 500;
         public const float DEFAULT_TEXT_SCALE = 1f;
         public const float HUD_TEXT_SCALE = 0.8f;
         public const float HUD_LINE_SPACING = 0.025f;
@@ -703,6 +704,7 @@ namespace Sandbox.Graphics.GUI
         public const string CURSOR_HAND = "Textures\\GUI\\MouseCursorHand.dds";
 
         public const string FOG_SMALL = "Textures\\GUI\\FogSmall.dds";
+        public const string FOG_SMALL1 = "Textures\\GUI\\FogSmall1.dds";
         public const string FOG_SMALL2 = "Textures\\GUI\\FogSmall2.dds";
         public const string FOG_SMALL3 = "Textures\\GUI\\FogSmall3.dds";
 

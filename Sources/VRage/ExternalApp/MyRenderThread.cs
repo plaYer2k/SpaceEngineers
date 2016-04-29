@@ -8,7 +8,9 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
+#if !UNSHARPER
 using System.Windows.Forms;
+#endif
 using VRage.Collections;
 using VRage;
 using VRage.Stats;
@@ -38,13 +40,18 @@ namespace VRage
         readonly WaitForTargetFrameRate m_waiter;
         MyTimeSpan m_messageProcessingStart; // Used for profiling message queue
         MyTimeSpan m_frameStart;
+        MyTimeSpan m_appEventsTime;
 
         volatile bool m_stopped = false;
 
         IMyRenderWindow m_renderWindow;
         MyRenderQualityEnum m_currentQuality;
 
-        System.Windows.Forms.Control m_form;
+#if !UNSHARPER
+		System.Windows.Forms.Control m_form;
+#else
+		RenderForm m_form;
+#endif
 
         private MyRenderDeviceSettings m_settings;
         private MyRenderDeviceSettings? m_newSettings;
@@ -115,6 +122,11 @@ namespace VRage
         {
             if (MyRenderProxy.EnableAppEventsCall)
             {
+                if ((m_timer.Elapsed - m_appEventsTime).Miliseconds > 10)
+                {
+                    Application.DoEvents();
+                    m_appEventsTime = m_timer.Elapsed;
+                }
                 Application.DoEvents();
             }
             RenderCallback();
@@ -149,9 +161,11 @@ namespace VRage
             {
                 // TODO: OP! Should be done better
                 try
-                {
-                    if (!m_form.IsDisposed)
-                        m_form.Invoke(new Action(OnExit));
+				{
+#if !UNSHARPER
+					if (!m_form.IsDisposed)
+                       m_form.Invoke(new Action(OnExit));
+#endif
                 }
                 catch
                 {
@@ -183,12 +197,20 @@ namespace VRage
             var startParams = (StartParams)param;
 
             m_renderWindow = startParams.InitHandler();
-            var control = System.Windows.Forms.Control.FromHandle(m_renderWindow.Handle);
+#if !UNSHARPER
+			var control = System.Windows.Forms.Control.FromHandle(m_renderWindow.Handle);
+#endif
 
             m_settings = MyRenderProxy.CreateDevice(this, m_renderWindow.Handle, startParams.SettingsToTry);
+            if (m_settings.AdapterOrdinal == -1)
+                return;
             MyRenderProxy.SendCreatedDeviceSettings(m_settings);
             m_currentQuality = startParams.RenderQuality;
-            m_form = control;
+#if !UNSHARPER
+			m_form = control;
+#else
+			m_form = m_renderWindow as RenderForm;
+#endif
 
             LoadContent();
             UpdateSize();
@@ -236,8 +258,8 @@ namespace VRage
             ProfilerShort.End();
 
             ProfilerShort.Begin("BeforeDraw(event)");
-            var handler = BeforeDraw;
-            if (handler != null) handler();
+			if (BeforeDraw != null)
+				BeforeDraw();
             ProfilerShort.End();
 
             ProfilerShort.End();
@@ -373,12 +395,17 @@ namespace VRage
                     break;
 
                 case MyWindowModeEnum.FullscreenWindow:
-                    {
+					{
+#if UNSHARPER
+						Debug.Assert(false);
+#else
                         WinApi.DEVMODE mode = new WinApi.DEVMODE();
                         WinApi.EnumDisplaySettings(null, WinApi.ENUM_REGISTRY_SETTINGS, ref mode);
                         VRage.Trace.MyTrace.Watch("Registry display settings", string.Format("{0}x{1}", mode.dmPelsWidth, mode.dmPelsHeight));
-                        m_renderWindow.OnModeChanged(MyWindowModeEnum.FullscreenWindow, mode.dmPelsWidth, mode.dmPelsHeight);
-                        break;
+						m_renderWindow.OnModeChanged(MyWindowModeEnum.FullscreenWindow, mode.dmPelsWidth, mode.dmPelsHeight);
+#endif
+
+						break;
                     }
 
                 case MyWindowModeEnum.Window:
@@ -414,7 +441,7 @@ namespace VRage
 
             ProfilerShort.Begin("Clear");
             // TODO: OP! This should be done only to prevent weird things on screen, not every frame
-            MyRenderProxy.ClearBackbuffer(new ColorBGRA(0.0f));
+            //MyRenderProxy.ClearBackbuffer(new ColorBGRA(0.0f));
             MyRenderProxy.ClearLargeMessages();
             ProfilerShort.End();
 

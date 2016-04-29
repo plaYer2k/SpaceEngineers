@@ -2,7 +2,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+#if !BLIT
 using System.Windows.Forms;
+#endif
 using VRageMath;
 
 namespace VRage
@@ -17,8 +19,12 @@ namespace VRage
 
     public class MyRenderWindow : IMyRenderWindow, IMyBufferedInputSource
     {
+#if !BLIT
         public Control Control;
         public Form TopLevelForm;
+#else
+		public SharpDX.Windows.RenderForm Control;
+#endif
 
         private FastResourceLock m_bufferedCharsLock = new FastResourceLock();
         private List<char> m_bufferedChars = new List<char>();
@@ -39,6 +45,17 @@ namespace VRage
 
         public void SetMouseCapture(bool capture)
         {
+            if (capture)
+            {
+                Cursor.Clip = Control.RectangleToScreen(Control.ClientRectangle);
+                Cursor.Hide();
+
+            }
+            else
+            {
+                Cursor.Clip = new System.Drawing.Rectangle(0, 0, SystemInformation.VirtualScreen.Width, SystemInformation.VirtualScreen.Height);                
+                Cursor.Show();
+            }
         }
 
         public void OnModeChanged(VRageRender.MyWindowModeEnum mode, int width, int height)

@@ -230,6 +230,15 @@ namespace VRageMath
             return vector3;
         }
 
+        public static Vector3D operator +(Vector3D value1, float value2)
+        {
+            Vector3D vector3;
+            vector3.X = value1.X + value2;
+            vector3.Y = value1.Y + value2;
+            vector3.Z = value1.Z + value2;
+            return vector3;
+        }
+
         /// <summary>
         /// Subtracts a vector from a vector.
         /// </summary>
@@ -1116,7 +1125,8 @@ namespace VRageMath
             result.Z = num9;
         }
 
-        public static Vector3D ClampToSphere(Vector3D vector, double radius)
+		[Unsharper.UnsharperDisableReflection()]
+		public static Vector3D ClampToSphere(Vector3D vector, double radius)
         {
             double lsq = vector.LengthSquared();
             double rsq = radius * radius;
@@ -1127,7 +1137,8 @@ namespace VRageMath
             return vector;
         }
 
-        public static void ClampToSphere(ref Vector3D vector, double radius)
+		[Unsharper.UnsharperDisableReflection()]
+		public static void ClampToSphere(ref Vector3D vector, double radius)
         {
             double lsq = vector.LengthSquared();
             double rsq = radius * radius;
@@ -1510,6 +1521,16 @@ namespace VRageMath
             result.Z = num15;
         }
 
+        public static void Rotate(ref Vector3D vector, ref MatrixD rotationMatrix, out Vector3D result)
+        {
+            double num1 = (double)((double)vector.X * (double)rotationMatrix.M11 + (double)vector.Y * (double)rotationMatrix.M21 + (double)vector.Z * (double)rotationMatrix.M31);
+            double num2 = (double)((double)vector.X * (double)rotationMatrix.M12 + (double)vector.Y * (double)rotationMatrix.M22 + (double)vector.Z * (double)rotationMatrix.M32);
+            double num3 = (double)((double)vector.X * (double)rotationMatrix.M13 + (double)vector.Y * (double)rotationMatrix.M23 + (double)vector.Z * (double)rotationMatrix.M33);
+            result.X = num1;
+            result.Y = num2;
+            result.Z = num3;
+        }
+
         /// <summary>
         /// Transforms a source array of Vector3s by a specified Matrix and writes the results to an existing destination array.
         /// </summary>
@@ -1868,14 +1889,16 @@ namespace VRageMath
             result.Z = value1.Z * num;
         }
 
-        public static Vector3D CalculatePerpendicularVector(Vector3D v)
+		[Unsharper.UnsharperDisableReflection()]
+		public static Vector3D CalculatePerpendicularVector(Vector3D v)
         {
             Vector3D result;
             v.CalculatePerpendicularVector(out result);
             return result;
         }
 
-        public void CalculatePerpendicularVector(out Vector3D result)
+		[Unsharper.UnsharperDisableReflection()]
+		public void CalculatePerpendicularVector(out Vector3D result)
         {
             const double threshold = 0.0001f;
             Debug.Assert(Math.Abs(1f - this.Length()) < threshold, "Input must be unit length vector.");

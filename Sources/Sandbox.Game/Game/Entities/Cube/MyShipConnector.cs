@@ -31,7 +31,7 @@ using VRage.Library.Utils;
 using Sandbox.ModAPI.Interfaces;
 using VRage.Game.Entity;
 using VRage.Game;
-using VRage.ModAPI.Ingame;
+using VRage.Game.ModAPI.Ingame;
 
 namespace Sandbox.Game.Entities.Cube
 {
@@ -44,9 +44,12 @@ namespace Sandbox.Game.Entities.Cube
         struct State
         {
             public static readonly State Detached = new State();
+            public static readonly State DetachedMaster = new State() { IsMaster = true };
 
+            public bool IsMaster;
             public long OtherEntityId; // zero when detached, valid EntityId when approaching or connected
             public MyDeltaTransform? MasterToSlave; // relative connector-to-connector world transform MASTER * DELTA = SLAVE, null when detached/approaching, valid value when connected
+            public MyDeltaTransform? MasterToSlaveApproaching;
         }
 
         private enum Mode
@@ -94,7 +97,9 @@ namespace Sandbox.Game.Entities.Cube
         /// Whether this block created the constraint and should also remove it. Only valid if Connected == true;
         /// Master is block with higher EntityId.
         /// </summary>
-        private bool IsMaster { get { return m_connectionState.Value.OtherEntityId < EntityId; } }
+        /// 
+        bool m_isMaster = false;
+        private bool IsMaster { get { return Sync.IsServer ? m_isMaster : m_connectionState.Value.IsMaster; }  set { m_isMaster = value; } }
 
         public bool IsReleasing { get { return MySandboxGame.Static.UpdateTime - m_manualDisconnectTime < DisconnectSleepTime; } }
 
@@ -270,8 +275,9 @@ namespace Sandbox.Game.Entities.Cube
 
             if (this.GetInventory() == null)
             {
-                Components.Add<MyInventoryBase>( new MyInventory(inventorySize.Volume, inventorySize, MyInventoryFlags.CanReceive | MyInventoryFlags.CanSend, this));
-                this.GetInventory().Init(ob.Inventory);
+                MyInventory inventory = new MyInventory(inventorySize.Volume, inventorySize, MyInventoryFlags.CanReceive | MyInventoryFlags.CanSend);
+                Components.Add<MyInventoryBase>(inventory);
+                inventory.Init(ob.Inventory);
             }
             Debug.Assert(this.GetInventory().Owner == this, "Ownership was not set!");
 
@@ -304,7 +310,13 @@ namespace Sandbox.Game.Entities.Cube
                     // Old saves with connected connector, store ZERO into MasterToSlave transform
                     deltaTransform = default(MyDeltaTransform);
                 }
-                m_connectionState.Value = new State() { OtherEntityId = ob.ConnectedEntityId, MasterToSlave = deltaTransform };
+                if(ob.IsMaster.HasValue == false)
+                {
+                    ob.IsMaster = ob.ConnectedEntityId < EntityId;
+                }
+
+                IsMaster = ob.IsMaster.Value;
+                m_connectionState.Value = new State() {IsMaster =  ob.IsMaster.Value, OtherEntityId = ob.ConnectedEntityId, MasterToSlave = deltaTransform };
                 NeedsUpdate |= MyEntityUpdateEnum.BEFORE_NEXT_FRAME;
             }
 
@@ -323,6 +335,7 @@ namespace Sandbox.Game.Entities.Cube
             ob.CollectAll = CollectAll;
             ob.Strength = Strength;
             ob.ConnectedEntityId = state.OtherEntityId;
+            ob.IsMaster = state.IsMaster;
             ob.MasterToSlaveTransform = state.MasterToSlave.HasValue ? state.MasterToSlave.Value : (MyPositionAndOrientation?)null;
             return ob;
         }
@@ -565,20 +578,20 @@ namespace Sandbox.Game.Entities.Cube
                     obj = m_other;
 
                 if (obj.Connected)
-                    VRageRender.MyRenderProxy.UpdateColorEmissivity(Render.RenderObjectIDs[0], 0, "Emissive1", Color.ForestGreen, 1);
+                    UpdateNamedEmissiveParts(Render.RenderObjectIDs[0], "Emissive1", Color.ForestGreen, 1);
                 else if (obj.IsReleasing)
-                    VRageRender.MyRenderProxy.UpdateColorEmissivity(Render.RenderObjectIDs[0], 0, "Emissive1", Color.RoyalBlue, 0.5f);
+                    UpdateNamedEmissiveParts(Render.RenderObjectIDs[0], "Emissive1", Color.RoyalBlue, 0.5f);
                 else
-                    VRageRender.MyRenderProxy.UpdateColorEmissivity(Render.RenderObjectIDs[0], 0, "Emissive1", Color.Goldenrod, 1);
+                    UpdateNamedEmissiveParts(Render.RenderObjectIDs[0], "Emissive1", Color.Goldenrod, 1);
             }
             else
             {
                 if (!IsWorking && m_connectorMode == Mode.Connector)
-                    VRageRender.MyRenderProxy.UpdateColorEmissivity(Render.RenderObjectIDs[0], 0, "Emissive1", Color.Black, 1);
+                    UpdateNamedEmissiveParts(Render.RenderObjectIDs[0], "Emissive1", Color.Black, 1);
                 else if (m_detectedFloaters.Count < 2 || !IsWorking)
-                    VRageRender.MyRenderProxy.UpdateColorEmissivity(Render.RenderObjectIDs[0], 0, "Emissive1", Color.Gray, 1);
+                    UpdateNamedEmissiveParts(Render.RenderObjectIDs[0], "Emissive1", Color.Gray, 1);
                 else
-                    VRageRender.MyRenderProxy.UpdateColorEmissivity(Render.RenderObjectIDs[0], 0, "Emissive1", Color.Red, 1);
+                    UpdateNamedEmissiveParts(Render.RenderObjectIDs[0], "Emissive1", Color.Red, 1);
             }
         }
 
@@ -612,10 +625,19 @@ namespace Sandbox.Game.Entities.Cube
 
                             if (otherConnector.m_connectorMode == Mode.Connector && otherConnector.IsFunctional && (otherPos - pos).LengthSquared() < 0.35f)
                             {
-                                if (EntityId > otherConnector.EntityId)
+                                MyShipConnector master = GetMaster(this, otherConnector);
+                                master.IsMaster = true;
+
+                                if (master == this)
+                                {
                                     this.CreateConstraint(otherConnector);
+                                    otherConnector.IsMaster = false;
+                                }
                                 else
+                                {
                                     otherConnector.CreateConstraint(this);
+                                    this.IsMaster = false;
+                                }
                             }
                         }
                     }
@@ -678,10 +700,15 @@ namespace Sandbox.Game.Entities.Cube
                     // Detach when connected or aproaching something else
                     Detach(false);
                 }
-
+               
                 MyShipConnector connector;
                 if (!InConstraint && MyEntities.TryGetEntityById<MyShipConnector>(state.OtherEntityId, out connector) && connector.FriendlyWithBlock(this))
                 {
+                    if (Sync.IsServer == false && state.MasterToSlaveApproaching != null)
+                    {
+                        WorldMatrix = MatrixD.Multiply(state.MasterToSlaveApproaching.Value, connector.WorldMatrix);
+                    }
+
                     this.CreateConstraintNosync(connector);
                 }
             }
@@ -705,6 +732,10 @@ namespace Sandbox.Game.Entities.Cube
                     {
                         // Special case when deserializing old saves with connected connector (old saves does not have MasterToSlave transform...it's zero)
                         masterToSlave = null;
+                    }
+                    else if(Sync.IsServer == false)
+                    {
+                        WorldMatrix = MatrixD.Multiply(masterToSlave.Value, m_other.WorldMatrix);
                     }
                     Connect(masterToSlave);
                 }
@@ -773,20 +804,17 @@ namespace Sandbox.Game.Entities.Cube
 
                 if (ejectedItemCount > 0)
                 {
-                    m_soundEmitter.PlaySound(m_actionSound);
-                    MyMultiplayer.RaiseEvent(this, x => x.PlayActionSound);
+                    if (m_soundEmitter != null)
+                    {
+                        m_soundEmitter.PlaySound(m_actionSound);
+                        MyMultiplayer.RaiseEvent(this, x => x.PlayActionSound);
+                    }
                 }
 
                 if (MyParticlesManager.TryCreateParticleEffect((int)MyParticleEffectsIDEnum.Smoke_Collector, out effect))
                 {
-                    //effect.WorldMatrix = Matrix.CreateWorld(PositionComp.GetPosition(), PositionComp.WorldMatrix.Forward, PositionComp.WorldMatrix.Up);
                     effect.WorldMatrix = entity.WorldMatrix;
                     effect.Velocity = CubeGrid.Physics.LinearVelocity;
-
-                    foreach (var gen in effect.GetGenerations())
-                    {
-                        gen.MotionInheritance.AddKey(0, 1f);
-                    }
                 }
                 break;
             }
@@ -851,14 +879,15 @@ namespace Sandbox.Game.Entities.Cube
             CreateConstraintNosync(otherConnector);
             if (Sync.IsServer)
             {
-                m_connectionState.Value = new State() { OtherEntityId = otherConnector.EntityId, MasterToSlave = null };
-                otherConnector.m_connectionState.Value = new State() { OtherEntityId = EntityId, MasterToSlave = null };
+                MatrixD masterToSlave = CubeGrid.WorldMatrix * MatrixD.Invert(m_other.WorldMatrix);
+                m_connectionState.Value = new State() {IsMaster = true, OtherEntityId = otherConnector.EntityId, MasterToSlave = null, MasterToSlaveApproaching = masterToSlave };
+                otherConnector.m_connectionState.Value = new State() { IsMaster = false, OtherEntityId = EntityId, MasterToSlave = null};
             }
         }
 
         private void CreateConstraintNosync(MyShipConnector otherConnector)
         {
-            Debug.Assert(EntityId > otherConnector.EntityId, "Constraints should be created only master (entity with higher EntityId)");
+            Debug.Assert(IsMaster, "Constraints should be created only master (entity with higher EntityId)");
 
             var posA = ConstraintPositionInGridSpace();
             var posB = otherConnector.ConstraintPositionInGridSpace();
@@ -940,7 +969,6 @@ namespace Sandbox.Game.Entities.Cube
         {
             Debug.Assert(IsMaster, "Only master can call connect");
             Debug.Assert(InConstraint, "Must be in constraint before connect");
-            Debug.Assert(EntityId > m_other.EntityId, "Only master can call connect");
 
             if (masterToSlave == null)
                 masterToSlave = WorldMatrix * MatrixD.Invert(m_other.WorldMatrix);
@@ -955,8 +983,8 @@ namespace Sandbox.Game.Entities.Cube
 
             if (Sync.IsServer)
             {
-                m_connectionState.Value = new State() { OtherEntityId = m_other.EntityId, MasterToSlave = masterToSlave.Value };
-                m_other.m_connectionState.Value = new State() { OtherEntityId = EntityId, MasterToSlave = masterToSlave.Value };
+                m_connectionState.Value = new State() {IsMaster = true, OtherEntityId = m_other.EntityId, MasterToSlave = masterToSlave.Value };
+                m_other.m_connectionState.Value = new State() { IsMaster = false, OtherEntityId = EntityId};
             }
         }
 
@@ -974,7 +1002,7 @@ namespace Sandbox.Game.Entities.Cube
 
         private void ConnectInternal(ref Matrix localSpaceA, ref Matrix localSpaceB, MyShipConnector otherConnector)
         {
-            Debug.Assert(EntityId > otherConnector.EntityId, "Constraints should be created only master (entity with higher EntityId)");
+            Debug.Assert(IsMaster, "Constraints should be created only master (entity with higher EntityId)");
             Debug.Assert(!m_attachableConveyorEndpoint.AlreadyAttached());
             if (m_attachableConveyorEndpoint.AlreadyAttached()) m_attachableConveyorEndpoint.DetachAll();
 
@@ -997,6 +1025,9 @@ namespace Sandbox.Game.Entities.Cube
                 this.OnConstraintAdded(GridLinkTypeEnum.Physical, otherConnector.CubeGrid);
             }
             CubeGrid.OnPhysicsChanged += CubeGrid_OnPhysicsChanged;
+
+            CubeGrid.GridSystems.ConveyorSystem.FlagForRecomputation();
+            otherConnector.CubeGrid.GridSystems.ConveyorSystem.FlagForRecomputation();
         }
 
         void CubeGrid_OnPhysicsChanged(MyEntity obj)
@@ -1063,7 +1094,7 @@ namespace Sandbox.Game.Entities.Cube
 
             if (synchronize && Sync.IsServer)
             {
-                m_connectionState.Value = State.Detached;
+                m_connectionState.Value = State.DetachedMaster;
                 m_other.m_connectionState.Value = State.Detached;
             }
 
@@ -1072,8 +1103,7 @@ namespace Sandbox.Game.Entities.Cube
 
         private void DetachInternal()
         {
-            bool isActualMaster = EntityId > m_other.EntityId;
-            if (!isActualMaster)
+            if (!IsMaster)
             {
                 m_other.DetachInternal();
                 return;
@@ -1108,6 +1138,9 @@ namespace Sandbox.Game.Entities.Cube
                     this.OnConstraintRemoved(GridLinkTypeEnum.Logical, otherConnector.CubeGrid);
                     this.OnConstraintRemoved(GridLinkTypeEnum.Physical, otherConnector.CubeGrid);
                 }
+
+                CubeGrid.GridSystems.ConveyorSystem.FlagForRecomputation();
+                otherConnector.CubeGrid.GridSystems.ConveyorSystem.FlagForRecomputation();
             }
         }
 
@@ -1191,6 +1224,45 @@ namespace Sandbox.Game.Entities.Cube
                 m_connectorDummy.DebugDraw();
         }
 
+        //connectors priority : static grid is always slave to dynamic
+        // large grid is always slave to small grid
+        // if grid size or physical state is same than higher entityId will be master
+        // this is computed only first time when approaching and set only by server
+        MyShipConnector GetMaster(MyShipConnector first, MyShipConnector second)
+        {
+            MyCubeGrid firstGrid = first.CubeGrid;
+            MyCubeGrid secondGrid = second.CubeGrid;
+
+            //static grids are always slaves
+            if (firstGrid.IsStatic != secondGrid.IsStatic)
+            {
+                if (firstGrid.IsStatic)
+                {
+                    return second;
+                }
+
+                if (secondGrid.IsStatic)
+                {
+                    return first;
+                }
+            }
+            else if (firstGrid.GridSize != secondGrid.GridSize)
+            {
+                if (firstGrid.GridSizeEnum == MyCubeSize.Large)
+                {
+                    return second;
+                }
+
+                if (secondGrid.GridSizeEnum == MyCubeSize.Large)
+                {
+                    return first;
+                }
+
+            }
+
+            return first.EntityId < second.EntityId ? second : first; 
+        }
+
         #region IMyConveyorEndpointBlock
         IMyConveyorEndpoint IMyConveyorEndpointBlock.ConveyorEndpoint
         {
@@ -1250,6 +1322,24 @@ namespace Sandbox.Game.Entities.Cube
         IMyInventory IMyInventoryOwner.GetInventory(int index)
         {
             return this.GetInventory(index);
+        }
+
+        #endregion
+
+        #region IMyConveyorEndpointBlock implementation
+
+        public Sandbox.Game.GameSystems.Conveyors.PullInformation GetPullInformation()
+        {
+            Sandbox.Game.GameSystems.Conveyors.PullInformation pullInformation = new PullInformation();
+            pullInformation.Inventory = this.GetInventory(0);
+            pullInformation.OwnerID = OwnerId;
+            pullInformation.Constraint = new MyInventoryConstraint("Empty Constraint");
+            return pullInformation;
+        }
+
+        public Sandbox.Game.GameSystems.Conveyors.PullInformation GetPushInformation()
+        {
+            return null;
         }
 
         #endregion

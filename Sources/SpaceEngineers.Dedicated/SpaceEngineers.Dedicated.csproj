@@ -272,7 +272,7 @@
   <Target Name="AfterBuild">
     <Exec Command="echo %time% Copying content..." />
     <!-- This will create Content junction (directory hardlink) in output, takes few ms -->
-    <RemoveDir Directories="$(OutDir)..\Content" />
+     <!-- <RemoveDir Directories="$(OutDir)..\Content" /> -->
     <Exec Command="mklink /J &quot;$(OutDir)..\Content&quot; &quot;$(ContentPath)&quot;" IgnoreExitCode="true" />
     <Exec Command="echo %time% Content copied" />
     <Copy Condition="'$(Configuration)|$(Platform)' == 'Release Official|x86'" SourceFiles="@(Redists86)" DestinationFolder="$(OutDir)" />

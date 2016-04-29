@@ -15,7 +15,7 @@ using VRage.Library.Collections;
 
 namespace Sandbox.Game.Gui
 {
-    class MyTerminalControlTextbox<TBlock> : MyTerminalControl<TBlock>, ITerminalControlSync
+    public class MyTerminalControlTextbox<TBlock> : MyTerminalControl<TBlock>, ITerminalControlSync
         where TBlock : MyTerminalBlock
     {
         public delegate StringBuilder GetterDelegate(TBlock block);
@@ -35,6 +35,7 @@ namespace Sandbox.Game.Gui
         public readonly MyStringId Title;
         public readonly MyStringId Tooltip;
 
+#if !BLIT
         public Expression<Func<TBlock, StringBuilder>> MemberExpression
         {
             set
@@ -43,7 +44,7 @@ namespace Sandbox.Game.Gui
                 Setter = new SetterDelegate(value.CreateSetter());
             }
         }
-
+#endif
         private StringBuilder m_tmpText = new StringBuilder(15);
         private Action<MyGuiControlTextbox> m_textChanged;
 

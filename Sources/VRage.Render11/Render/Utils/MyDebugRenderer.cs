@@ -42,6 +42,7 @@ namespace VRageRender
         static PixelShaderId m_edgeDebugShader;
         static PixelShaderId m_shadowsDebugShader;
         static PixelShaderId m_NDotLShader;
+        private static PixelShaderId m_depthShader;
         private static PixelShaderId m_stencilShader;
 
         static VertexShaderId m_screenVertexShader;
@@ -51,6 +52,8 @@ namespace VRageRender
         static InputLayoutId m_inputLayout;
 
         static VertexBufferId m_quadBuffer;
+
+        internal static PixelShaderId BlitTextureShader { get { return m_blitTextureShader; } }
 
         internal static void Init()
         {
@@ -69,6 +72,7 @@ namespace VRageRender
             m_edgeDebugShader = MyShaders.CreatePs("debug_edge.hlsl");
             m_shadowsDebugShader = MyShaders.CreatePs("debug_cascades_shadow.hlsl");
             m_NDotLShader = MyShaders.CreatePs("debug_NDotL.hlsl");
+            m_depthShader = MyShaders.CreatePs("debug_Depth.hlsl");
             m_stencilShader = MyShaders.CreatePs("debug_Stencil.hlsl");
 
             m_blitTextureShader = MyShaders.CreatePs("debug_blitTexture.hlsl");
@@ -76,14 +80,20 @@ namespace VRageRender
             m_blitTextureArrayShader = MyShaders.CreatePs("debug_blitTextureArray.hlsl");
             m_inputLayout = MyShaders.CreateIL(m_screenVertexShader.BytecodeId, MyVertexLayouts.GetLayout(MyVertexInputComponentType.POSITION2, MyVertexInputComponentType.TEXCOORD0));
 
-            m_quadBuffer = MyHwBuffers.CreateVertexBuffer(6, MyVertexFormatPosition2Texcoord.STRIDE, BindFlags.VertexBuffer, ResourceUsage.Dynamic);
+            m_quadBuffer = MyHwBuffers.CreateVertexBuffer(6, MyVertexFormatPosition2Texcoord.STRIDE, BindFlags.VertexBuffer, ResourceUsage.Dynamic, null, "MyDebugRenderer quad");
         }
 
-        internal static void DrawQuad(float x, float y, float w, float h)
+        internal static void DrawQuad(float x, float y, float w, float h, VertexShaderId? customVertexShader = null)
         {
             //RC.Context.PixelShader.Set(m_blitTextureShader);
 
-            RC.DeviceContext.VertexShader.Set(m_screenVertexShader);
+            VertexShaderId usedVertexShader;
+            if (!customVertexShader.HasValue)
+                usedVertexShader = m_screenVertexShader;
+            else
+                usedVertexShader = customVertexShader.Value;
+
+            RC.DeviceContext.VertexShader.Set(usedVertexShader);
             RC.DeviceContext.InputAssembler.InputLayout = m_inputLayout;
 
             var mapping = MyMapping.MapDiscard(m_quadBuffer.Buffer);
@@ -118,7 +128,7 @@ namespace VRageRender
             var tex = MyAtmosphereRenderer.AtmosphereLUT[ID].TransmittanceLut;
 
             RC.DeviceContext.PixelShader.Set(m_blitTextureShader);
-            RC.DeviceContext.PixelShader.SetShaderResource(0, tex.ShaderView);
+            RC.DeviceContext.PixelShader.SetShaderResource(0, tex.SRV);
 
             DrawQuad(256, 0, 256, 64);
 
@@ -147,7 +157,7 @@ namespace VRageRender
         private static void DrawCascadeArray(RwTexId textureArray, int quadStartX, int quadStartY, int quadSize)
         {
             RC.DeviceContext.PixelShader.Set(m_blitTextureArrayShader);
-            RC.DeviceContext.PixelShader.SetShaderResource(0, textureArray.ShaderView);
+            RC.DeviceContext.PixelShader.SetShaderResource(0, textureArray.SRV);
 
             var cb = MyCommon.GetMaterialCB(sizeof(uint));
             RC.DeviceContext.PixelShader.SetConstantBuffer(5, cb);
@@ -271,9 +281,13 @@ namespace VRageRender
                 context.PixelShader.Set(m_NDotLShader);
                 MyScreenPass.DrawFullscreenQuad();
             }
-            else if(MyRender11.Settings.DisplayStencil)
+            else if(MyRender11.Settings.DisplayDepth)
             {
-                context.PixelShader.SetShaderResource(4, MyGBuffer.Main.DepthStencil.m_SRV_stencil);
+                context.PixelShader.Set(m_depthShader);
+                MyScreenPass.DrawFullscreenQuad();
+            }
+            else if (MyRender11.Settings.DisplayStencil)
+            {
                 context.PixelShader.Set(m_stencilShader);
                 MyScreenPass.DrawFullscreenQuad();
             }
@@ -302,7 +316,7 @@ namespace VRageRender
 
                 foreach (var light in MyLightRendering.VisiblePointlights)
                 {
-                    batch.AddSphereRing(new BoundingSphere(light.Position, 0.5f), Color.White, Matrix.Identity);
+                    batch.AddSphereRing(new BoundingSphere(light.PointPosition, 0.5f), Color.White, Matrix.Identity);
                 }
                 batch.Commit();
             }

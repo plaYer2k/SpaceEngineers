@@ -88,6 +88,11 @@ namespace VRage.Animations
 
         Type IMyConstProperty.GetValueType()
         {
+            return GetValueTypeInternal();
+        }
+
+        protected virtual Type GetValueTypeInternal()
+        {
             return typeof(T);
         }
 
@@ -280,7 +285,10 @@ namespace VRage.Animations
         #endregion
     }
 
-    public class MyConstPropertyEnum : MyConstPropertyInt, IMyConstProperty
+    public class MyConstPropertyEnum : MyConstPropertyInt
+#if !BLIT
+        , IMyConstProperty
+#endif
     {
         Type m_enumType;
         List<string> m_enumStrings;
@@ -329,11 +337,17 @@ namespace VRage.Animations
             return prop;
         }
 
+#if BLIT
+        protected override Type GetValueTypeInternal()
+        {
+            return m_enumType;
+        }
+#else
         Type IMyConstProperty.GetValueType()
         {
             return m_enumType;
         }
-
+#endif
         public override void SetValue(object val)
         {            
             int ival = Convert.ToInt32(val); // because just simple cast (int) thrown exception on ParticleTypeEnum type
@@ -399,7 +413,43 @@ namespace VRage.Animations
 
         static public implicit operator bool(MyConstPropertyBool f)
         {
-            return f.GetValue<bool>();
+            return f != null && f.GetValue<bool>();
+        }
+
+        #endregion
+    }
+
+    public class MyConstPropertyString : MyConstProperty<string>
+    {
+        public MyConstPropertyString() { }
+
+        public MyConstPropertyString(string name)
+            : base(name)
+        { }
+
+        public override void SerializeValue(XmlWriter writer, object value)
+        {
+            writer.WriteValue((string)value);
+        }
+
+        public override void DeserializeValue(XmlReader reader, out object value)
+        {
+            base.DeserializeValue(reader, out value);
+            value = value.ToString();
+        }
+
+        public override IMyConstProperty Duplicate()
+        {
+            MyConstPropertyString prop = new MyConstPropertyString(Name);
+            Duplicate(prop);
+            return prop;
+        }
+
+        #region Implicit and explicit conversions
+
+        static public implicit operator string(MyConstPropertyString f)
+        {
+            return f.GetValue<string>();
         }
 
         #endregion

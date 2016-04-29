@@ -16,6 +16,7 @@ using Sandbox.Game.Entities.EnvironmentItems;
 using VRage.ModAPI;
 using VRage.Game.Entity;
 using Sandbox.Game.AI;
+using VRage.Game.ModAPI;
 
 namespace Sandbox.Engine.Voxels
 {
@@ -592,7 +593,10 @@ namespace Sandbox.Engine.Voxels
             voxelMap.Storage.ClampVoxelCoord(ref cacheMax);
             m_cache.Resize(cacheMin, cacheMax);
             m_cache.ClearMaterials(0);
-            voxelMap.Storage.ReadRange(m_cache, readMaterial ? MyStorageDataTypeFlags.ContentAndMaterial : MyStorageDataTypeFlags.Content, 0, ref cacheMin, ref cacheMax);
+
+            // Advise that the read content shall be cached
+            MyVoxelRequestFlags flags = MyVoxelRequestFlags.AdviseCache;
+            voxelMap.Storage.ReadRange(m_cache, readMaterial ? MyStorageDataTypeFlags.ContentAndMaterial : MyStorageDataTypeFlags.Content, 0, ref cacheMin, ref cacheMax, ref flags);
 
             Vector3I center;
             if (materials)
@@ -681,10 +685,10 @@ namespace Sandbox.Engine.Voxels
 
             voxelsCountInPercent = (originalSum > 0f) ? (float)removedSum / (float)originalSum : 0f;
 
+            shape.Transformation = oldTranmsform;
+
             if (removedSum > 0)
                 OnVoxelChanged(MyVoxelBase.OperationType.Cut, voxelMap, shape);
-
-            shape.Transformation = oldTranmsform;
 
             ProfilerShort.End();
         }
@@ -699,7 +703,7 @@ namespace Sandbox.Engine.Voxels
             minCorner = Vector3I.Max(Vector3I.One, minCorner);
             maxCorner = Vector3I.Max(minCorner, maxCorner);
 
-            for (var itCells = new Vector3I.RangeIterator(ref Vector3I.Zero, ref numCells); itCells.IsValid(); itCells.MoveNext())
+            for (var itCells = new Vector3I_RangeIterator(ref Vector3I.Zero, ref numCells); itCells.IsValid(); itCells.MoveNext())
             {
                 Vector3I cellMinCorner, cellMaxCorner;
                 GetCellCorners(ref minCorner, ref maxCorner, ref itCells, out cellMinCorner, out cellMaxCorner);
@@ -718,7 +722,7 @@ namespace Sandbox.Engine.Voxels
 
                 ulong filledSum = 0;
 
-                for (var it = new Vector3I.RangeIterator(ref cellMinCorner, ref cellMaxCorner); it.IsValid(); it.MoveNext())
+                for (var it = new Vector3I_RangeIterator(ref cellMinCorner, ref cellMaxCorner); it.IsValid(); it.MoveNext())
                 {
                     var relPos = it.Current - cellMinCorner; // get original amount
                     var original = m_cache.Content(ref relPos);
@@ -771,7 +775,7 @@ namespace Sandbox.Engine.Voxels
             Vector3I minCorner, maxCorner, numCells;
             GetVoxelShapeDimensions(voxelMap, shape, out minCorner, out maxCorner, out numCells);
 
-            for (var itCells = new Vector3I.RangeIterator(ref Vector3I.Zero, ref numCells); itCells.IsValid(); itCells.MoveNext())
+            for (var itCells = new Vector3I_RangeIterator(ref Vector3I.Zero, ref numCells); itCells.IsValid(); itCells.MoveNext())
             {
                 Vector3I cellMinCorner, cellMaxCorner;
                 GetCellCorners(ref minCorner, ref maxCorner, ref itCells, out cellMinCorner, out cellMaxCorner);
@@ -779,7 +783,7 @@ namespace Sandbox.Engine.Voxels
                 m_cache.Resize(cellMinCorner, cellMaxCorner);
                 voxelMap.Storage.ReadRange(m_cache, MyStorageDataTypeFlags.Material, 0, ref cellMinCorner, ref cellMaxCorner);
 
-                for (var it = new Vector3I.RangeIterator(ref cellMinCorner, ref cellMaxCorner); it.IsValid(); it.MoveNext())
+                for (var it = new Vector3I_RangeIterator(ref cellMinCorner, ref cellMaxCorner); it.IsValid(); it.MoveNext())
                 {
                     var relPos = it.Current - cellMinCorner;
 
@@ -805,7 +809,7 @@ namespace Sandbox.Engine.Voxels
             GetVoxelShapeDimensions(voxelMap, shape, out minCorner, out maxCorner, out numCells);
             ulong changedVolumeAmount = 0;
 
-            for (var itCells = new Vector3I.RangeIterator(ref Vector3I.Zero, ref numCells); itCells.IsValid(); itCells.MoveNext())
+            for (var itCells = new Vector3I_RangeIterator(ref Vector3I.Zero, ref numCells); itCells.IsValid(); itCells.MoveNext())
             {
                 Vector3I cellMinCorner, cellMaxCorner;
                 GetCellCorners(ref minCorner, ref maxCorner, ref itCells, out cellMinCorner, out cellMaxCorner);
@@ -819,7 +823,7 @@ namespace Sandbox.Engine.Voxels
                 m_cache.Resize(cacheMin, cacheMax);
                 voxelMap.Storage.ReadRange(m_cache, MyStorageDataTypeFlags.Content, 0, ref cacheMin, ref cacheMax);
 
-                for (var it = new Vector3I.RangeIterator(ref cellMinCorner, ref cellMaxCorner); it.IsValid(); it.MoveNext())
+                for (var it = new Vector3I_RangeIterator(ref cellMinCorner, ref cellMaxCorner); it.IsValid(); it.MoveNext())
                 {
                     var relPos = it.Current - cacheMin; // get original amount
                     var original = m_cache.Content(ref relPos);
@@ -973,7 +977,7 @@ namespace Sandbox.Engine.Voxels
             numCells = new Vector3I((maxCorner.X - minCorner.X) / CELL_SIZE, (maxCorner.Y - minCorner.Y) / CELL_SIZE, (maxCorner.Z - minCorner.Z) / CELL_SIZE);
         }
 
-        private static void GetCellCorners(ref Vector3I minCorner, ref Vector3I maxCorner, ref Vector3I.RangeIterator it, out Vector3I cellMinCorner, out Vector3I cellMaxCorner)
+        private static void GetCellCorners(ref Vector3I minCorner, ref Vector3I maxCorner, ref Vector3I_RangeIterator it, out Vector3I cellMinCorner, out Vector3I cellMaxCorner)
         {
             cellMinCorner = new Vector3I(minCorner.X + it.Current.X * CELL_SIZE, minCorner.Y + it.Current.Y * CELL_SIZE, minCorner.Z + it.Current.Z * CELL_SIZE);
             cellMaxCorner = new Vector3I(Math.Min(maxCorner.X, cellMinCorner.X + CELL_SIZE), Math.Min(maxCorner.Y, cellMinCorner.Y + CELL_SIZE), Math.Min(maxCorner.Z, cellMinCorner.Z + CELL_SIZE));

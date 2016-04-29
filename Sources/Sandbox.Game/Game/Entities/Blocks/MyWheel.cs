@@ -50,16 +50,25 @@ namespace Sandbox.Game.Entities.Blocks
             value.EnableParticles = false;
             value.RubberDeformation = true;
 
+            string particle = null;
             if (value.CollidingEntity is MyVoxelBase && MyFakes.ENABLE_DRIVING_PARTICLES)
             {
                 MyVoxelBase voxel = value.CollidingEntity as MyVoxelBase;
                 Vector3D contactPosition = value.ContactPosition;
-                MyStringHash material = MyStringHash.GetOrCompute(voxel.GetMaterialAt(ref contactPosition).MaterialTypeName);
-                MyTuple<int, ContactPropertyParticleProperties> particle = MyMaterialPropertiesHelper.Static.GetCollisionEffectAndProperties(MyMaterialPropertiesHelper.CollisionType.Start, m_wheelStringHash, material);
-                
-                if (Render != null && particle.Item1 > 0)
-                    Render.TrySpawnParticle(value.ContactPosition, particle);
+                var vmat = voxel.GetMaterialAt(ref contactPosition);
+                if (vmat == null) return;
+
+                MyStringHash material = MyStringHash.GetOrCompute(vmat.MaterialTypeName);
+                particle = MyMaterialPropertiesHelper.Static.GetCollisionEffect(MyMaterialPropertiesHelper.CollisionType.Start, m_wheelStringHash, material);
             }
+            else if (value.CollidingEntity is MyCubeGrid && MyFakes.ENABLE_DRIVING_PARTICLES)
+            {
+                MyCubeGrid grid = value.CollidingEntity as MyCubeGrid;
+                MyStringHash material = grid.Physics.GetMaterialAt(value.ContactPosition);
+                particle = MyMaterialPropertiesHelper.Static.GetCollisionEffect(MyMaterialPropertiesHelper.CollisionType.Start, m_wheelStringHash, material);
+            }
+            if (Render != null && particle != null)
+                Render.TrySpawnParticle(value.ContactPosition, particle);
         }
     }
 }

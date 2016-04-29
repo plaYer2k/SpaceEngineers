@@ -28,11 +28,11 @@ using VRage.FileSystem;
 
 namespace VRageRender
 {
-    struct MyBillboardBatch
+    struct MyBillboardRendererBatch
     {
         internal int Offset;
         internal int Num;
-        internal ShaderResourceView Texture;
+        internal IShaderResourceBindable Texture;
         internal bool Lit;
         internal bool AlphaCutout;
     }
@@ -46,61 +46,6 @@ namespace VRageRender
         internal Vector3 Normal;
         internal float SoftParticleDistanceScale;
         internal float AlphaCutout;
-    }
-
-    struct MyTextureAtlasElement
-    {
-        internal TexId TextureId;
-        internal Vector4 UvOffsetScale;
-    }
-
-    class MyTextureAtlas
-    {
-        internal static void ParseAtlasDescription(string textureDir, string atlasFile, Dictionary<string, MyTextureAtlasElement> atlasDict)
-        {
-            try
-            {
-                //var atlas = new MyTextureAtlas(64);
-                var fsPath = Path.Combine(MyFileSystem.ContentPath, atlasFile);
-                using (var file = MyFileSystem.OpenRead(fsPath))
-                using (StreamReader sr = new StreamReader(file))
-                {
-                    while (!sr.EndOfStream)
-                    {
-                        string line = sr.ReadLine();
-
-                        if (line.StartsWith("#"))
-                            continue;
-                        if (line.Trim(' ').Length == 0)
-                            continue;
-
-                        string[] parts = line.Split(new char[] { ' ', '\t', ',' }, StringSplitOptions.RemoveEmptyEntries);
-
-                        string name = parts[0];
-                        string atlasName = parts[1];
-
-                        Vector4 uv = new Vector4(
-                            Convert.ToSingle(parts[4], System.Globalization.CultureInfo.InvariantCulture),
-                            Convert.ToSingle(parts[5], System.Globalization.CultureInfo.InvariantCulture),
-                            Convert.ToSingle(parts[7], System.Globalization.CultureInfo.InvariantCulture),
-                            Convert.ToSingle(parts[8], System.Globalization.CultureInfo.InvariantCulture));
-
-                        name = textureDir + System.IO.Path.GetFileName(name);
-                        var atlasTexture = textureDir + atlasName;
-
-                        var element = new MyTextureAtlasElement();
-                        element.TextureId = MyTextures.GetTexture(atlasTexture, MyTextureEnum.GUI, true);
-                        element.UvOffsetScale = uv;
-                        atlasDict[name] = element;
-                    }
-                }
-
-            }
-            catch (Exception e)
-            {
-                MyLog.Default.WriteLine("Warning: " + e.ToString());
-            }
-        }
     }
 
     internal static class MyBillboardsHelper
@@ -187,6 +132,7 @@ namespace VRageRender
             billboard.Position3 = quad.Point3;
 
             billboard.UVOffset = uvOffset;
+            billboard.UVSize = Vector2.One;
 
             //  Distance for sorting
             //  IMPORTANT: Must be calculated before we do color and alpha misting, because we need distance there
@@ -242,7 +188,7 @@ namespace VRageRender
 
         static MyBillboardData[] m_billboardData = new MyBillboardData[MaxBillboards];
         static MyVertexFormatPositionTextureH[] m_vertexData = new MyVertexFormatPositionTextureH[MaxBillboards * 4];
-        static List<MyBillboardBatch> m_batches = new List<MyBillboardBatch>();
+        static List<MyBillboardRendererBatch> m_batches = new List<MyBillboardRendererBatch>();
         static MyBillboard[] m_sortBuffer = new MyBillboard[MaxBillboards];
         static int m_sortedBillboardsNum;
 
@@ -250,8 +196,7 @@ namespace VRageRender
 
         internal static List<MyBillboard> m_billboardsOnce = new List<MyBillboard>();
         internal static MyObjectsPoolSimple<MyBillboard> m_billboardsOncePool = new MyObjectsPoolSimple<MyBillboard>(MaxBillboards / 4);
-
-        static Dictionary<string, MyTextureAtlasElement> m_atlasedTextures = new Dictionary<string, MyTextureAtlasElement>();
+        private static MyTextureAtlas m_atlas;
 
         internal unsafe static void Init()
         {
@@ -269,12 +214,11 @@ namespace VRageRender
 
             InitBillboardsIndexBuffer(MaxBillboards);
 
-            m_VB = MyHwBuffers.CreateVertexBuffer(MaxBillboards * 4, sizeof(MyVertexFormatPositionTextureH), BindFlags.VertexBuffer, ResourceUsage.Dynamic);
+            m_VB = MyHwBuffers.CreateVertexBuffer(MaxBillboards * 4, sizeof(MyVertexFormatPositionTextureH), BindFlags.VertexBuffer, ResourceUsage.Dynamic, null, "MyBillboardRenderer");
 
             var stride = sizeof(MyBillboardData);
-            m_SB = MyHwBuffers.CreateStructuredBuffer(MaxBillboards, stride, true);
-
-            MyTextureAtlas.ParseAtlasDescription("Textures\\Particles\\", "Textures\\Particles\\ParticlesAtlas.tai", m_atlasedTextures);
+            m_SB = MyHwBuffers.CreateStructuredBuffer(MaxBillboards, stride, true, null, "MyBillboardRenderer");
+            m_atlas = new MyTextureAtlas("Textures\\Particles\\", "Textures\\Particles\\ParticlesAtlas.tai");
         }
 
         internal unsafe static void InitBillboardsIndexBuffer(int billboardsLimit)
@@ -296,7 +240,7 @@ namespace VRageRender
             }
             fixed (uint* ptr = indices)
             {
-                m_IB = MyHwBuffers.CreateIndexBuffer(MaxBillboards * 6, SharpDX.DXGI.Format.R32_UInt, BindFlags.IndexBuffer, ResourceUsage.Immutable, new IntPtr(ptr));
+                m_IB = MyHwBuffers.CreateIndexBuffer(MaxBillboards * 6, SharpDX.DXGI.Format.R32_UInt, BindFlags.IndexBuffer, ResourceUsage.Immutable, new IntPtr(ptr), "MyBillboardRenderer");
             }
         }
 
@@ -323,8 +267,11 @@ namespace VRageRender
 
                 for (int j = 0; j < billboard.ContainedBillboards.Count; j++)
                 {
-                    var material = MyTransparentMaterials.GetMaterial(billboard.ContainedBillboards[j].Material);
-                    m_sortedNum += material.NeedSort ? 1 : 0;
+                    if (billboard.ContainedBillboards[j].Material != null)
+                    {
+                        var material = MyTransparentMaterials.GetMaterial(billboard.ContainedBillboards[j].Material);
+                        m_sortedNum += material.NeedSort ? 1 : 0;
+                    }
                 }
             }
 
@@ -355,15 +302,18 @@ namespace VRageRender
 
                 for (int j = 0; j < billboard.ContainedBillboards.Count; j++)
                 {
-                    var material = MyTransparentMaterials.GetMaterial(billboard.ContainedBillboards[j].Material);
+                    if (billboard.ContainedBillboards[j].Material != null)
+                    {
+                        var material = MyTransparentMaterials.GetMaterial(billboard.ContainedBillboards[j].Material);
 
-                    if (material.NeedSort)
-                    {
-                        m_sortBuffer[m_sorted++] = billboard.ContainedBillboards[j];
-                    }
-                    else
-                    {
-                        m_sortBuffer[m_sortedNum + m_unsorted++] = billboard.ContainedBillboards[j];
+                        if (material.NeedSort)
+                        {
+                            m_sortBuffer[m_sorted++] = billboard.ContainedBillboards[j];
+                        }
+                        else
+                        {
+                            m_sortBuffer[m_sortedNum + m_unsorted++] = billboard.ContainedBillboards[j];
+                        }
                     }
                 }
             }
@@ -392,7 +342,7 @@ namespace VRageRender
 
             var N = m_sorted + m_unsorted;
 
-            var batch = new MyBillboardBatch();
+            var batch = new MyBillboardRendererBatch();
             //MyAssetTexture prevTexture = null;
             var prevTexId = TexId.NULL;
             int currentOffset = 0;
@@ -403,7 +353,7 @@ namespace VRageRender
 
                 if(material.UseAtlas)
                 {
-                    var item = m_atlasedTextures[material.Texture];
+                    var item = m_atlas.FindElement(material.Texture);
                     prevTexId = item.TextureId;
                 }
                 else
@@ -432,7 +382,7 @@ namespace VRageRender
                 billboardData.SoftParticleDistanceScale = material.SoftParticleDistanceScale;
                 if (material.UseAtlas)
                 {
-                    var atlasItem = m_atlasedTextures[material.Texture];
+                    var atlasItem = m_atlas.FindElement(material.Texture);
                     //billboardData.UvModifiers = new HalfVector4(atlasItem.UvOffsetScale);
                     batchTexId = atlasItem.TextureId;
                 }
@@ -487,13 +437,13 @@ namespace VRageRender
                 m_vertexData[i * 4 + 3].Position = pos3;
 
                 var uv0 = new Vector2(material.UVOffset.X + billboard.UVOffset.X, material.UVOffset.Y + billboard.UVOffset.Y);
-                var uv1 = new Vector2(material.UVOffset.X + material.UVSize.X + billboard.UVOffset.X, material.UVOffset.Y + billboard.UVOffset.Y);
-                var uv2 = new Vector2(material.UVOffset.X + material.UVSize.X + billboard.UVOffset.X, material.UVOffset.Y + material.UVSize.Y + billboard.UVOffset.Y);
-                var uv3 = new Vector2(material.UVOffset.X + billboard.UVOffset.X, material.UVOffset.Y + material.UVSize.Y + billboard.UVOffset.Y);
+                var uv1 = new Vector2(material.UVOffset.X + material.UVSize.X * billboard.UVSize.X + billboard.UVOffset.X , material.UVOffset.Y + billboard.UVOffset.Y);
+                var uv2 = new Vector2(material.UVOffset.X + material.UVSize.X * billboard.UVSize.X + billboard.UVOffset.X, material.UVOffset.Y + billboard.UVOffset.Y + material.UVSize.Y * billboard.UVSize.Y);
+                var uv3 = new Vector2(material.UVOffset.X + billboard.UVOffset.X, material.UVOffset.Y + billboard.UVOffset.Y + material.UVSize.Y * billboard.UVSize.Y);
 
                 if (material.UseAtlas)
                 {
-                    var atlasItem = m_atlasedTextures[material.Texture];
+                    var atlasItem = m_atlas.FindElement(material.Texture);
 
                     uv0 = uv0 * new Vector2(atlasItem.UvOffsetScale.Z, atlasItem.UvOffsetScale.W) + new Vector2(atlasItem.UvOffsetScale.X, atlasItem.UvOffsetScale.Y);
                     uv1 = uv1 * new Vector2(atlasItem.UvOffsetScale.Z, atlasItem.UvOffsetScale.W) + new Vector2(atlasItem.UvOffsetScale.X, atlasItem.UvOffsetScale.Y);
@@ -530,11 +480,11 @@ namespace VRageRender
 
                 if(closeBatch)
                 {
-                    batch = new MyBillboardBatch();
+                    batch = new MyBillboardRendererBatch();
 
                     batch.Offset = currentOffset;
                     batch.Num = i - currentOffset;
-                    batch.Texture = prevTexId != TexId.NULL ? MyTextures.Views[prevTexId.Index] : null;
+                    batch.Texture = prevTexId;
 
                     batch.Lit = prevMaterial.CanBeAffectedByOtherLights;
                     batch.AlphaCutout = prevMaterial.AlphaCutout;
@@ -549,10 +499,10 @@ namespace VRageRender
 
             if(N > 0)
             {
-                batch = new MyBillboardBatch();
+                batch = new MyBillboardRendererBatch();
                 batch.Offset = currentOffset;
                 batch.Num = N - currentOffset;
-                batch.Texture = prevTexId != TexId.NULL ? MyTextures.GetView(prevTexId) : null;
+                batch.Texture = prevTexId;
 
                 batch.Lit = prevMaterial.CanBeAffectedByOtherLights;
                 batch.AlphaCutout = prevMaterial.AlphaCutout;
@@ -604,6 +554,9 @@ namespace VRageRender
 
         internal unsafe static void Render(MyBindableResource dst, MyBindableResource depth, MyBindableResource depthRead)
         {
+            if (!MyRender11.DebugOverrides.BillboardsDynamic)
+                OnFrameStart();
+
             m_stats.Clear();
             MyRender11.GetRenderProfiler().StartProfilingBlock("Gather");
             Gather();
@@ -616,18 +569,20 @@ namespace VRageRender
             RC.BindDepthRT(depth, DepthStencilAccess.ReadOnly, dst);
             RC.SetBS(MyRender11.BlendAlphaPremult);
             RC.SetRS(MyRender11.m_nocullRasterizerState);
-            RC.BindRawSRV(104, m_SB.Srv);
+            RC.BindRawSRV(104, m_SB);
             RC.BindSRV(1, depthRead);
             RC.SetCB(2, MyCommon.GetObjectCB(sizeof(Matrix) * MaxCustomProjections));
             RC.SetDS(MyDepthStencilState.DefaultDepthState);
 
             RC.SetCB(4, MyRender11.DynamicShadows.ShadowCascades.CascadeConstantBuffer);
-            RC.DeviceContext.VertexShader.SetSampler(MyCommon.SHADOW_SAMPLER_SLOT, MyRender11.m_shadowmapSamplerState);
-            RC.DeviceContext.VertexShader.SetShaderResource(MyCommon.CASCADES_SM_SLOT, MyRender11.DynamicShadows.ShadowCascades.CascadeShadowmapArray.ShaderView);
-            RC.DeviceContext.VertexShader.SetSamplers(0, MyRender11.StandardSamplers);
+            RC.DeviceContext.VertexShader.SetSampler(MyCommon.SHADOW_SAMPLER_SLOT, SamplerStates.m_shadowmap);
+            RC.DeviceContext.VertexShader.SetShaderResource(MyCommon.CASCADES_SM_SLOT, MyRender11.DynamicShadows.ShadowCascades.CascadeShadowmapArray.SRV);
+            RC.DeviceContext.VertexShader.SetSamplers(0, SamplerStates.StandardSamplers);
 
-            RC.DeviceContext.VertexShader.SetShaderResource(MyCommon.SKYBOX_IBL_SLOT, MyTextures.GetView(MyTextures.GetTexture(MyEnvironment.DaySkyboxPrefiltered, MyTextureEnum.CUBEMAP, true)));
-            RC.DeviceContext.PixelShader.SetShaderResource(MyCommon.SKYBOX2_IBL_SLOT, MyTextures.GetView(MyTextures.GetTexture(MyEnvironment.NightSkyboxPrefiltered, MyTextureEnum.CUBEMAP, true)));
+            RC.DeviceContext.VertexShader.SetShaderResource(MyCommon.SKYBOX_IBL_SLOT,
+                MyRender11.IsIntelBrokenCubemapsWorkaround ? MyTextures.GetView(MyTextures.IntelFallbackCubeTexId) : MyEnvironmentProbe.Instance.cubemapPrefiltered.SRV);
+            RC.DeviceContext.VertexShader.SetShaderResource(MyCommon.SKYBOX2_IBL_SLOT,
+                MyTextures.GetView(MyTextures.GetTexture(MyEnvironment.NightSkyboxPrefiltered, MyTextureEnum.CUBEMAP, true)));
 
             RC.SetVB(0, m_VB.Buffer, m_VB.Stride);
             RC.SetIB(m_IB.Buffer, m_IB.Format);

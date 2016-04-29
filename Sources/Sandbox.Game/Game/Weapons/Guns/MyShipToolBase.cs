@@ -25,13 +25,15 @@ using VRage.Game.Components;
 using VRage;
 using VRage.Game;
 using VRage.Game.Entity;
-using VRage.ModAPI.Ingame;
+using VRage.Game.ModAPI.Ingame;
+using VRage.Game.ModAPI.Interfaces;
+using Sandbox.Game.Audio;
+using Sandbox.Game.World;
 
 namespace Sandbox.Game.Weapons
 {
     public abstract class MyShipToolBase : MyFunctionalBlock, IMyGunObject<MyToolBase>, IMyInventoryOwner, IMyConveyorEndpointBlock, IMyShipToolBase
     {
-
         /// <summary>
         /// Default reach distance of a tool;
         /// </summary>
@@ -49,6 +51,7 @@ namespace Sandbox.Game.Weapons
         protected int m_lastTimeActivate;
 
         private int m_shootHeatup;
+        public bool IsHeatingUp { get { return (m_shootHeatup > 0); } }
 
         private bool m_effectsSet;
 
@@ -64,6 +67,7 @@ namespace Sandbox.Game.Weapons
         private Sync<bool> m_useConveyorSystem;
 
         protected MyCharacter controller = null;
+        public int HeatUpFrames { get; protected set; }
 
         protected override bool CheckIsWorking()
         {
@@ -114,8 +118,9 @@ namespace Sandbox.Game.Weapons
 
             if (this.GetInventory() == null) // could be already initialized as component
             {
-                Components.Add<MyInventoryBase>( new MyInventory(inventoryVolume, inventorySize, MyInventoryFlags.CanSend, this));
-                this.GetInventory().Init(typedBuilder.Inventory);
+                MyInventory inventory = new MyInventory(inventoryVolume, inventorySize, MyInventoryFlags.CanSend);
+                Components.Add<MyInventoryBase>(inventory);
+                inventory.Init(typedBuilder.Inventory);
             }
             Debug.Assert(this.GetInventory().Owner == this, "Ownership was not set!");
 
@@ -239,6 +244,12 @@ namespace Sandbox.Game.Weapons
             VRage.ProfilerShort.End();
         }
 
+        protected void SetBuildingMusic(int amount)
+        {
+            if (MySession.Static != null && controller == MySession.Static.LocalCharacter && MyMusicController.Static != null)
+                MyMusicController.Static.Building(amount);
+        }
+
         protected virtual bool CanInteractWithSelf
         {
             get
@@ -337,7 +348,7 @@ namespace Sandbox.Game.Weapons
 
         private void UpdateAnimationCommon()
         {
-            UpdateAnimation(m_isActivated);
+            UpdateAnimation(m_isActivated || IsHeatingUp);
 
             if (m_isActivatedOnSomething && m_effectsSet == false)
             {
@@ -444,6 +455,7 @@ namespace Sandbox.Game.Weapons
         {
             Physics.Enabled = true;
             m_isActivated = true;
+            NeedsUpdate |= MyEntityUpdateEnum.EACH_FRAME;
         }
 
         protected virtual void StopShooting()
@@ -549,11 +561,13 @@ namespace Sandbox.Game.Weapons
             return true;
         }
 
-        public void Shoot(MyShootActionEnum action, Vector3 direction, string gunAction)
+        public void Shoot(MyShootActionEnum action, Vector3 direction, Vector3D? overrideWeaponPos, string gunAction)
         {
             if (action != MyShootActionEnum.PrimaryAction) return;
 
-            if (m_shootHeatup < MyShipGrinderConstants.GRINDER_HEATUP_FRAMES)
+            NeedsUpdate |= MyEntityUpdateEnum.EACH_FRAME;
+
+            if (m_shootHeatup < HeatUpFrames)
             {
                 m_shootHeatup++;
                 return;
@@ -628,6 +642,20 @@ namespace Sandbox.Game.Weapons
         IMyInventory IMyInventoryOwner.GetInventory(int index)
         {
             return MyEntityExtensions.GetInventory(this, index);
+        }
+
+        #endregion
+
+        #region IMyConveyorEndpointBlock implementation
+
+        public virtual Sandbox.Game.GameSystems.Conveyors.PullInformation GetPullInformation()
+        {
+            return null;
+        }
+
+        public virtual Sandbox.Game.GameSystems.Conveyors.PullInformation GetPushInformation()
+        {
+            return null;
         }
 
         #endregion

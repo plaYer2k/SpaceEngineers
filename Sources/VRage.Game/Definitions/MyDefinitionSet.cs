@@ -26,7 +26,7 @@ namespace VRage.Game
                 Definitions[def.Id.TypeId] = dict;
             }
 
-            dict.Add(def.Id.SubtypeId, def);
+            dict[def.Id.SubtypeId] = def;
         }
 
         /**
@@ -65,7 +65,11 @@ namespace VRage.Game
          */
         public IEnumerable<T> GetDefinitionsOfType<T>() where T : MyDefinitionBase
         {
-            return Definitions[MyDefinitionManagerBase.GetObjectBuilderType(typeof(T))].Values.Cast<T>();
+            Dictionary<MyStringHash, MyDefinitionBase> definitions = null;
+            if (Definitions.TryGetValue(MyDefinitionManagerBase.GetObjectBuilderType(typeof(T)), out definitions))
+                return definitions.Values.Cast<T>();
+            else
+                return null;
         }
 
         public bool ContainsDefinition(MyDefinitionId id)

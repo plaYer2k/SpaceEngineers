@@ -10,14 +10,52 @@ using System.Text;
 using System.Threading;
 using VRage.Library.Utils;
 
+
 namespace VRage.Compiler
 {
     public class ScriptOutOfRangeException : Exception
     {
     }
 
+#if UNSHARPER
     public class IlInjector
     {
+      
+
+
+        public static void RestartCountingInstructions(int maxInstructions)
+        {
+
+        }
+        public static void CountInstructions()
+        {
+
+        }
+        public static void RestartCountingMethods(int maxMethodCalls)
+        {
+
+        }
+        public static void CountMethodCalls()
+        {
+
+        }
+        public static Assembly InjectCodeToAssembly(string newAssemblyName, Assembly inputAssembly, MethodInfo method,MethodInfo methodToInjectMethodCheck, bool save = false)
+        {
+            return null;
+        }
+    }
+#else
+    public class IlInjector
+    {
+        public interface ICounterHandle : IDisposable
+        {
+            int InstructionCount { get; }
+            int MaxInstructionCount { get; }
+            int MethodCallCount { get; }
+            int MaxMethodCallCount { get; }
+        }
+
+        // MAL Don't Like Statics: Reusing a handle like this feels... not good...
         static InstructionCounterHandle m_instructionCounterHandle = new InstructionCounterHandle();
         static int m_numInstructions = 0;
         static int m_numMaxInstructions = 0;
@@ -27,7 +65,7 @@ namespace VRage.Compiler
             return m_instructionCounterHandle.Depth > 0;
         }
 
-        public static IDisposable BeginRunBlock(int maxInstructions, int maxMethodCalls)
+        public static ICounterHandle BeginRunBlock(int maxInstructions, int maxMethodCalls)
         {
             m_instructionCounterHandle.AddRef(maxInstructions, maxMethodCalls);
             return m_instructionCounterHandle;
@@ -663,7 +701,7 @@ namespace VRage.Compiler
             generator.Emit(code, field);
         }
 
-        private class InstructionCounterHandle : IDisposable
+        private class InstructionCounterHandle : ICounterHandle
         {
             int m_runDepth;
 
@@ -689,6 +727,15 @@ namespace VRage.Compiler
                     this.m_runDepth--;
                 }
             }
+
+            // MAL Don't Like Statics: Calling static fields like this... not good. But any
+            // alternative I can think of requires a big rewrite of the ILInjector.
+            public int InstructionCount { get { return IlInjector.m_numInstructions; } }
+            public int MaxInstructionCount { get { return IlInjector.m_numMaxInstructions; } }
+            public int MethodCallCount { get { return IlInjector.m_numMethodCalls; } }
+            public int MaxMethodCallCount { get { return IlInjector.m_numMaxMethodCalls; } }
         }
     }
+#endif
 }
+

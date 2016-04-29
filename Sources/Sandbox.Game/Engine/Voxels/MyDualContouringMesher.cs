@@ -59,6 +59,7 @@ namespace Sandbox.Engine.Voxels
                 if (storage.Closed) return null;    
 
                 MyVoxelRequestFlags request = MyVoxelRequestFlags.ContentChecked; // | (doNotCheck ? MyVoxelRequestFlags.DoNotCheck : 0);
+                //if (lod == 0 && generateMaterials) request |= MyVoxelRequestFlags.AdviseCache;
 
                 bool readAmbient = false;
 
@@ -73,6 +74,8 @@ namespace Sandbox.Engine.Voxels
                 if (request.HasFlag(MyVoxelRequestFlags.EmptyContent) || request.HasFlag(MyVoxelRequestFlags.FullContent)
                     || (!request.HasFlag(MyVoxelRequestFlags.ContentChecked) && !m_cache.ContainsIsoSurface()))
                 {
+                    //if(generateMaterials && lod == 0) Debugger.Break();
+                    //storage.DebugDrawChunk(voxelStart, voxelEnd);
                     return null;
                 }
 
@@ -110,9 +113,9 @@ namespace Sandbox.Engine.Voxels
                     request = 0;
 
                     request |= MyVoxelRequestFlags.SurfaceMaterial;
-                    request |= MyVoxelRequestFlags.OneMaterial;
+                    request |= MyVoxelRequestFlags.ConsiderContent;
 
-                    var req = readAmbient ? MyStorageDataTypeFlags.Material | MyStorageDataTypeFlags.Occlusion : MyStorageDataTypeFlags.Material; 
+                    var req = readAmbient ? MyStorageDataTypeFlags.Material | MyStorageDataTypeFlags.Occlusion : MyStorageDataTypeFlags.Material;
 
                     storage.ReadRange(m_cache, req, lod, ref voxelStart, ref voxelEnd, ref request);
 
@@ -149,11 +152,13 @@ namespace Sandbox.Engine.Voxels
                 {
                     var positions = m_buffer.Positions.GetInternalArray();
                     var vertexCells = m_buffer.Cells.GetInternalArray();
+                    var materials = m_buffer.Materials.GetInternalArray();
                     for (int i = 0; i < m_buffer.VerticesCount; i++)
                     {
                         Debug.Assert(positions[i].IsInsideInclusive(ref Vector3.MinusOne, ref Vector3.One));
                         vertexCells[i] += vertexCellOffset;
                         Debug.Assert(vertexCells[i].IsInsideInclusive(voxelStart + 1, voxelEnd - 1));
+                        Debug.Assert(materials[i] != MyVoxelConstants.NULL_MATERIAL);
                     }
 
                     m_buffer.PositionOffset = posOffset;
@@ -182,7 +187,7 @@ namespace Sandbox.Engine.Voxels
             var mcount = Sandbox.Definitions.MyDefinitionManager.Static.VoxelMaterialCount;
             voxelEnd = Vector3I.Min(voxelEnd - voxelStart, m_cache.Size3D);
             voxelStart = Vector3I.Zero;
-            var it = new Vector3I.RangeIterator(ref voxelStart, ref voxelEnd);
+            var it = new Vector3I_RangeIterator(ref voxelStart, ref voxelEnd);
             var pos = it.Current;
             for (; it.IsValid(); it.GetNext(out pos))
             {

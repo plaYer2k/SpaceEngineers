@@ -109,7 +109,7 @@ namespace Sandbox.Game.Gui
             {
                 case MyHudSelectedObjectState.VisibleStateSet:
                 {
-                    if (selection.Visible && (selection.HighlightStyle == MyHudObjectHighlightStyle.HighlightStyle1
+                    if (selection.Visible && (selection.CurrentObject.Style == MyHudObjectHighlightStyle.HighlightStyle1
                             || selection.VisibleRenderID != selection.CurrentObject.Instance.RenderObjectID))
                         MyGuiScreenHudBase.DrawSelectedObjectHighlight(selection, data);
 
@@ -146,7 +146,8 @@ namespace Sandbox.Game.Gui
                 case MyHudObjectHighlightStyle.HighlightStyle2:
                 {
                     int[] sectionIndices = selection.SectionIndices;
-                    if (sectionIndices != null && selection.SectionIndices.Length == 0)
+                    if (sectionIndices != null && selection.SectionIndices.Length == 0
+                        && selection.SubpartIndices == null)
                     {
                         // There was a problem with sections look-up, fallback to previous highlight style
                         DrawSelectedObjectHighlight1(selection, data.Value.AtlasTexture, data.Value.TextureCoord);
@@ -156,6 +157,12 @@ namespace Sandbox.Game.Gui
                     DrawSelectedObjectHighlight2(selection);
                     break;
                 }
+                case MyHudObjectHighlightStyle.None:
+                {
+                    return;
+                }
+                default:
+                    throw new Exception("Unknown highlight style");
             }
 
             selection.Visible = true;
@@ -166,8 +173,6 @@ namespace Sandbox.Game.Gui
             RemoveObjectHighlightInternal(ref selection.CurrentObject, false);
         
             selection.Visible = false;
-            if (!selection.KeepObjectReference)
-                selection.CurrentObject.Reset();
         }
 
         private static void RemoveObjectHighlightInternal(ref MyHudSelectedObjectStatus status, bool reset)
@@ -176,7 +181,7 @@ namespace Sandbox.Game.Gui
             {
                 case MyHudObjectHighlightStyle.HighlightStyle2:
                 {
-                    MyRenderProxy.UpdateModelHighlight((uint)status.Instance.RenderObjectID, 0, null, null, null, null, -1);
+                    MyRenderProxy.UpdateModelHighlight((uint)status.Instance.RenderObjectID, null, status.SubpartIndices, null, -1, 0);
                     break;
                 }
             }
@@ -201,7 +206,7 @@ namespace Sandbox.Game.Gui
         {
             bool retval = base.Draw();
 
-            if (MySandboxGame.Config.ShowCrosshair)
+            if (MySandboxGame.Config.ShowCrosshair && !MyHud.MinimalHud)
             {
                 MyHud.Crosshair.Draw(m_atlas, m_atlasCoords);
             }
@@ -213,7 +218,8 @@ namespace Sandbox.Game.Gui
         {
             Color color = MyDefinitionManager.Static.EnvironmentDefinition.ContourHighlightColor;
             float thickness = MyDefinitionManager.Static.EnvironmentDefinition.ContourHighlightThickness;
-            MyRenderProxy.UpdateModelHighlight((uint)selection.InteractiveObject.RenderObjectID, 0, null, selection.SectionIndices, null, color, thickness);
+            ulong pulseTimeInFrames = (ulong)Math.Round(MyDefinitionManager.Static.EnvironmentDefinition.HighlightPulseInSeconds * MyEngineConstants.UPDATE_STEPS_PER_SECOND);
+            MyRenderProxy.UpdateModelHighlight((uint)selection.InteractiveObject.RenderObjectID, selection.SectionIndices, selection.SubpartIndices, color, thickness, pulseTimeInFrames);
         }
 
         public static void DrawSelectedObjectHighlight1(MyHudSelectedObject selection, string atlasTexture, MyAtlasTextureCoordinate textureCoord)
@@ -275,16 +281,26 @@ namespace Sandbox.Game.Gui
                 selection.HalfSize / MyGuiManager.GetHudSize() * textureScale);
         }
 
+        public static void DrawFogNotification(ref Vector2 centerPosition, ref Vector2 textSize)
+        {
+            Vector2 fogFadeSize = textSize * new Vector2(1.6f, 8.0f);
+            DrawFogInternal(MyGuiConstants.FOG_SMALL, ref centerPosition, ref fogFadeSize, 1, MyGuiDrawAlignEnum.HORISONTAL_CENTER_AND_VERTICAL_CENTER);
+        }
+
+        public static void DrawFog(ref Vector2 centerPosition, ref Vector2 textSize, float fogAlphaMultiplier = 1,
+            MyGuiDrawAlignEnum alignment = MyGuiDrawAlignEnum.HORISONTAL_CENTER_AND_VERTICAL_CENTER)
+        {
+            Vector2 fogFadeSize = textSize * new Vector2(1.5f, 3.0f);
+            DrawFogInternal(MyGuiConstants.FOG_SMALL1, ref centerPosition, ref fogFadeSize, fogAlphaMultiplier, alignment);
+        }
+
         /// <summary>
         /// Draws fog (eg. background for notifications) at specified position in normalized GUI coordinates.
         /// </summary>
-        public static void DrawFog(ref Vector2 centerPosition, ref Vector2 textSize)
+        private static void DrawFogInternal(string texture, ref Vector2 centerPosition, ref Vector2 size, float fogAlphaMultiplier, MyGuiDrawAlignEnum alignment)
         {
-            Color color = new Color(0, 0, 0, (byte)(255 * 0.85f));
-            Vector2 fogFadeSize = textSize * new Vector2(1.4f, 3.0f);
-
-            MyGuiManager.DrawSpriteBatch(MyGuiConstants.FOG_SMALL, centerPosition, fogFadeSize, color,
-                MyGuiDrawAlignEnum.HORISONTAL_CENTER_AND_VERTICAL_CENTER, MyVideoSettingsManager.IsTripleHead());
+            Color color = new Color(0, 0, 0, (byte)(255 * 0.85f * fogAlphaMultiplier));
+            MyGuiManager.DrawSpriteBatch(texture, centerPosition, size, color, alignment, MyVideoSettingsManager.IsTripleHead());
         }
 
         public MyHudText AllocateText()
@@ -299,6 +315,7 @@ namespace Sandbox.Game.Gui
             for (int i = 0; i < m_texts.GetAllocatedCount(); i++)
             {
                 MyHudText text = m_texts.GetAllocatedItem(i);
+                if (text.GetStringBuilder().Length == 0) continue;
 
                 var font = text.Font;
                 text.Position /= MyGuiManager.GetHudSize();
@@ -307,9 +324,10 @@ namespace Sandbox.Game.Gui
                 Vector2 textSize = MyGuiManager.MeasureString(font, text.GetStringBuilder(), MyGuiSandbox.GetDefaultTextScaleWithLanguage());
                 textSize.X *= 0.9f;
                 textSize.Y *= 0.7f;
-                MyGuiScreenHudBase.DrawFog(ref normalizedCoord, ref textSize);
+                textSize *= text.Scale;
+                MyGuiScreenHudBase.DrawFog(ref normalizedCoord, ref textSize, text.Color.A / 255f, text.Alignement);
 
-                MyGuiManager.DrawString(font, text.GetStringBuilder(), normalizedCoord, text.Scale, colorMask: text.Color, drawAlign: MyGuiDrawAlignEnum.HORISONTAL_CENTER_AND_VERTICAL_CENTER);
+                MyGuiManager.DrawString(font, text.GetStringBuilder(), normalizedCoord, text.Scale, colorMask: text.Color, drawAlign: text.Alignement);
             }
 
             m_texts.ClearAllAllocated();

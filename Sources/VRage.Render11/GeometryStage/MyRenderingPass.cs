@@ -58,6 +58,19 @@ namespace VRageRender
         }
     }
 
+    struct MyMergeInstancingConstants
+    {
+        public static readonly MyMergeInstancingConstants Default;
+
+        static MyMergeInstancingConstants()
+        {
+            Default = new MyMergeInstancingConstants() { InstanceIndex = -1 };
+        }
+
+        public int InstanceIndex;
+        public int StartIndex;
+    }
+
     abstract class MyRenderingPass
     {
         #region Local
@@ -142,7 +155,7 @@ namespace VRageRender
             Context.InputAssembler.PrimitiveTopology = PrimitiveTopology.TriangleList;
             Context.Rasterizer.SetViewport(Viewport.OffsetX, Viewport.OffsetY, Viewport.Width, Viewport.Height);
 
-            Context.PixelShader.SetSamplers(0, MyRender11.StandardSamplers);
+            Context.PixelShader.SetSamplers(0, SamplerStates.StandardSamplers);
 
             RC.SetCB(MyCommon.FRAME_SLOT, MyCommon.FrameConstants);
             RC.SetCB(MyCommon.PROJECTION_SLOT, MyCommon.ProjectionConstants);
@@ -150,12 +163,12 @@ namespace VRageRender
 
             Context.PixelShader.SetShaderResource(MyCommon.DITHER_8X8_SLOT, MyTextures.Views[MyTextures.Dithering8x8TexId.Index]);
 
-            if (MyBigMeshTable.Table.m_IB != null)
+            if (MyBigMeshTable.Table.m_IB != StructuredBufferId.NULL)
             {
                 var slotcounter = MyCommon.BIG_TABLE_INDICES;
-                RC.VSBindSRV(slotcounter++, MyBigMeshTable.Table.m_IB.Srv);
-                RC.VSBindSRV(slotcounter++, MyBigMeshTable.Table.m_VB_positions.Srv);
-                RC.VSBindSRV(slotcounter++, MyBigMeshTable.Table.m_VB_rest.Srv);
+                RC.VSBindRawSRV(slotcounter++, MyBigMeshTable.Table.m_IB);
+                RC.VSBindRawSRV(slotcounter++, MyBigMeshTable.Table.m_VB_positions);
+                RC.VSBindRawSRV(slotcounter++, MyBigMeshTable.Table.m_VB_rest);
             }
         }
 
@@ -220,14 +233,14 @@ namespace VRageRender
             RecordCommandsInternal(proxy, section);
         }
 
-        protected virtual void RecordCommandsInternal(MyRenderableProxy proxy, int section)
-        {
+        protected virtual void RecordCommandsInternal(MyRenderableProxy proxy, int section) { }
 
+        internal void RecordCommands(ref MyRenderableProxy_2 proxy, int instance = -1, int section = -1)
+        {
+            RecordCommandsInternal(ref proxy, instance, section);
         }
 
-        internal virtual void RecordCommands(ref MyRenderableProxy_2 proxy)
-        {
-        }
+        protected virtual void RecordCommandsInternal(ref MyRenderableProxy_2 proxy, int instance, int section) { }
 
         internal virtual void End()
         {
@@ -241,6 +254,37 @@ namespace VRageRender
                     RC.EndProfilingBlock();
                 }
             }
+        }
+
+        protected unsafe void SetProxyConstants(ref MyRenderableProxy_2 proxy, MyMergeInstancingConstants? arg = null)
+        {
+            MyMergeInstancingConstants constants = arg ?? MyMergeInstancingConstants.Default;
+
+            int version = constants.GetHashCode();
+            if (constants.GetHashCode() != proxy.ObjectConstants.Version)
+            {
+                int size = sizeof(MyMergeInstancingConstants);
+                var buffer = new byte[sizeof(MyMergeInstancingConstants)];
+
+                proxy.ObjectConstants = new MyConstantsPack()
+                {
+                    BindFlag = MyBindFlag.BIND_VS,
+                    CB = MyCommon.GetObjectCB(size),
+                    Version = version,
+                    Data = buffer
+                };
+
+
+                fixed (byte* dstPtr = buffer)
+                {
+                    MyMemory.CopyMemory(new IntPtr(dstPtr), new IntPtr(&constants), (uint)size);
+                }
+            }
+
+            RC.MoveConstants(ref proxy.ObjectConstants);
+            RC.SetConstants(ref proxy.ObjectConstants, MyCommon.OBJECT_SLOT);
+
+            ++Stats.ObjectConstantsChanges;
         }
 
         protected void SetProxyConstants(MyRenderableProxy proxy)

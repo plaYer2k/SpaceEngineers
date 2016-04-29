@@ -15,10 +15,15 @@ namespace VRage.Collections
         Queue<T> m_queue;
         SpinLockRef m_lock = new SpinLockRef();
 
-        public MyConcurrentQueue(int capacity = 0)
+        public MyConcurrentQueue(int capacity)
         {
             m_queue = new Queue<T>(capacity);
         }
+
+		public MyConcurrentQueue() //default.
+		{
+			m_queue = new Queue<T>(0);
+		}
 
         public int Count
         {
@@ -27,7 +32,7 @@ namespace VRage.Collections
                 using (m_lock.Acquire())
                 {
                     return m_queue.Count;
-                };
+                }
             }
         }
 
@@ -52,7 +57,7 @@ namespace VRage.Collections
             using (m_lock.Acquire())
             {
                 return m_queue.Dequeue();
-            };
+            }
         }
 
         public bool TryDequeue(out T instance)

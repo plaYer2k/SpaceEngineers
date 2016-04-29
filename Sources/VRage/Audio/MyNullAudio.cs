@@ -22,18 +22,23 @@ namespace VRage.Audio
         bool IMyAudio.Mute { get { return true; } set { } }
         bool IMyAudio.MusicAllowed { get { return false; } set { } }
         bool IMyAudio.EnableVoiceChat { get { return false; } set { } }
+        bool IMyAudio.UseSameSoundLimiter { get { return false; } set { } }
+        bool IMyAudio.UseVolumeLimiter { get { return false; } set { } }
+        void IMyAudio.SetSameSoundLimiter() { }
         event Action<bool> IMyAudio.VoiceChatEnabled { add { } remove { } }
 
         bool IMyAudio.IsValidTransitionCategory(MyStringId transitionCategory, MyStringId musicCategory) { return false; }
 
         List<MyStringId> IMyAudio.GetCategories() { return null; }
         MySoundData IMyAudio.GetCue(MyCueId cue) { return null; }
+        Dictionary<MyStringId, List<MyCueId>> IMyAudio.GetAllMusicCues() { return null; }
 
         void IMyAudio.Pause() { }
         void IMyAudio.Resume() { }
         void IMyAudio.PauseGameSounds() { }
         void IMyAudio.ResumeGameSounds() { }
         void IMyAudio.PlayMusic(MyMusicTrack? track, int priorityForRandom) { }
+        IMySourceVoice IMyAudio.PlayMusicCue(MyCueId musicCue) { return null; }
         void IMyAudio.StopMusic() { }
         void IMyAudio.MuteHud(bool mute) { }
         bool IMyAudio.HasAnyTransition() { return false; }

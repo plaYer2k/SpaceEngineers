@@ -1,5 +1,4 @@
 ﻿using Sandbox.Common;
-using Sandbox.Common.Components;
 using Sandbox.Common.ObjectBuilders;
 using Sandbox.Definitions;
 using Sandbox.Engine.Utils;
@@ -53,15 +52,24 @@ namespace Sandbox.Game.World
             Scripts.Clear();
             EntityScripts.Clear();
             SubEntityScripts.Clear();
-            if(Sync.IsServer)
+            if (Sync.IsServer)
+            {
                 LoadScripts(MyFileSystem.ContentPath);
-            LoadScripts(MySession.Static.CurrentPath);
-            ReadScripts(MySession.Static.CurrentPath);
-            foreach (var mod in MySession.Static.Mods)
-                LoadScripts(Path.Combine(MyFileSystem.ModsPath, mod.Name), mod.Name);
+            }
+            if (MySession.Static.CurrentPath != null)
+            {
+                LoadScripts(MySession.Static.CurrentPath);
+                ReadScripts(MySession.Static.CurrentPath);
+            }
+            if (MySession.Static.Mods != null)
+            {
+                foreach (var mod in MySession.Static.Mods)
+                    LoadScripts(Path.Combine(MyFileSystem.ModsPath, mod.Name), mod.Name);
+            }
+
             foreach (var ass in Scripts.Values)
             {
-                MySession.Static.RegisterComponentsFromAssembly(ass);
+                MySession.Static.RegisterComponentsFromAssembly(ass, true);
                 MySandboxGame.Log.WriteLine(string.Format("Script loaded: {0}", ass.FullName));
             }
             MySandboxGame.Log.DecreaseIndent();
@@ -72,6 +80,10 @@ namespace Sandbox.Game.World
 
         private void LoadScripts(string path, string modName = null)
         {
+#if BLIT
+			// unsupported runtime script compilation.
+			System.Diagnostics.Debug.Assert(false);
+#else
             if (!MyFakes.ENABLE_SCRIPTS)
                 return;
 
@@ -110,10 +122,15 @@ namespace Sandbox.Game.World
             }
             Compile(files.ToArray(),Path.Combine(MyFileSystem.ModsPath,string.Format("{0}_{1}",modName,scriptDir)), isZip);
             files.Clear();
-        }
+#endif
+		}
 
         private void Compile(IEnumerable<string> scriptFiles, string assemblyName, bool zipped)
         {
+#if BLIT
+			// unsupported runtime script compilation.
+			System.Diagnostics.Debug.Assert(false);
+#else
             Assembly assembly = null;
             bool compiled = false;
             var c = new MyModContext();
@@ -166,6 +183,7 @@ namespace Sandbox.Game.World
                 m_errors.Clear();
             }
             m_cachedFiles.Clear();
+#endif
         }
 
         private void AddAssembly(MyStringId myStringId, Assembly assembly)

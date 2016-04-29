@@ -1,5 +1,4 @@
-﻿using Sandbox.Common.Components;
-using Sandbox.Common.ObjectBuilders;
+﻿using Sandbox.Common.ObjectBuilders;
 using Sandbox.Definitions;
 using Sandbox.Engine.Multiplayer;
 using Sandbox.Game;
@@ -18,11 +17,12 @@ using VRage.Game.Entity;
 using VRage.Game.ObjectBuilders.ComponentSystem;
 using VRage.Library.Sync;
 using VRage.ModAPI;
-using VRage.ModAPI.Ingame;
+using VRage.Game.ModAPI.Ingame;
 using VRage.Network;
 using VRage.ObjectBuilders;
 using VRage.Utils;
 using VRageMath;
+using Sandbox.Game.SessionComponents;
 
 namespace Sandbox.Game.Components
 {
@@ -576,7 +576,8 @@ namespace Sandbox.Game.Components
             }
             else
             {
-                System.Diagnostics.Debug.Fail("Trying to remove item from production, but item wasn't found!");
+                // On MP it can easily happen that we are removing an item that was already produced on the server, so don't assert in that case
+                System.Diagnostics.Debug.Assert(Sync.Clients.Count != 0, "Trying to remove item from production, but item wasn't found!");
             }            
         }
 
@@ -597,7 +598,7 @@ namespace Sandbox.Game.Components
 
             foreach (var requiredItem in blueprintDefinition.Prerequisites)
             {
-                var itemAmount = inventory.GetItemAmount( requiredItem.Id);
+                var itemAmount = inventory.GetItemAmount( requiredItem.Id, substitute: true);
                 var producableAmount = MyFixedPoint.Floor((MyFixedPoint)((float)itemAmount / (float)requiredItem.Amount));
                 maxProducableAmount = MyFixedPoint.Min(maxProducableAmount, producableAmount);
                 if (maxProducableAmount == 0)
@@ -634,11 +635,25 @@ namespace Sandbox.Game.Components
             foreach (var reqItem in definition.Prerequisites)
             {
                 var amountToRemove = reqItem.Amount * amountMult;
+                var itemId = reqItem.Id;
+                MyFixedPoint removed = 0;
 
-                System.Diagnostics.Debug.Assert(amountToRemove <= inventory.GetItemAmount(reqItem.Id), "Trying to remove higher amount than is present in inventory!");
+                if (MySessionComponentEquivalency.Static != null && MySessionComponentEquivalency.Static.HasEquivalents(itemId))
+                {
+                    var eqGroup = MySessionComponentEquivalency.Static.GetEquivalents(itemId);
+                    foreach (var element in eqGroup)
+                    {
+                        if (removed == amountToRemove)
+                            continue;
 
-                var removed = inventory.RemoveItemsOfType(amountToRemove, reqItem.Id);
-
+                        removed += inventory.RemoveItemsOfType(amountToRemove, element);
+                    }
+                }
+                else
+                {
+                    System.Diagnostics.Debug.Assert(amountToRemove <= inventory.GetItemAmount(reqItem.Id, substitute: true), "Trying to remove higher amount than is present in inventory!");
+                    removed += inventory.RemoveItemsOfType(amountToRemove, itemId);
+                }
                 System.Diagnostics.Debug.Assert(removed == amountToRemove, "Removed different amount, than expected!");
             }
         }
@@ -661,8 +676,12 @@ namespace Sandbox.Game.Components
             foreach (var prodItem in definition.Results)
             {
                 var amountToAdd = prodItem.Amount * amountMult;
+                IMyInventoryItem inventoryItem;
 
-                var inventoryItem = CreateInventoryItem(prodItem.Id, amountToAdd);
+                if (definition is MyBlockBlueprintDefinition)
+                    inventoryItem = CreateInventoryBlockItem(prodItem.Id, amountToAdd);
+                else
+                    inventoryItem = CreateInventoryItem(prodItem.Id, amountToAdd);
 
                 var resultAdded = inventory.Add(inventoryItem, inventoryItem.Amount);
 
@@ -673,10 +692,18 @@ namespace Sandbox.Game.Components
         protected IMyInventoryItem CreateInventoryItem(MyDefinitionId itemDefinition, MyFixedPoint amount)
         {
             var content = MyObjectBuilderSerializer.CreateNewObject(itemDefinition) as MyObjectBuilder_PhysicalObject;
-
+            
             System.Diagnostics.Debug.Assert(content != null, "Can not create the requested type from definition!");
 
             MyPhysicalInventoryItem inventoryItem = new MyPhysicalInventoryItem(amount, content);            
+
+            return inventoryItem;
+        }
+
+        protected IMyInventoryItem CreateInventoryBlockItem(MyDefinitionId blockDefinition, MyFixedPoint amount)
+        {
+            var content = new MyObjectBuilder_BlockItem() { BlockDefId = blockDefinition };
+            MyPhysicalInventoryItem inventoryItem = new MyPhysicalInventoryItem(amount, content);
 
             return inventoryItem;
         }

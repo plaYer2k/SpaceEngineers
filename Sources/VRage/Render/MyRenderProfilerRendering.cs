@@ -61,7 +61,7 @@ namespace VRageRender.Profiler
             }
         }
 
-        void DrawEvent(float textPosY, MyProfiler.MyProfilerBlock profilerBlock, int blockIndex, int frameIndex, int lastValidFrame, ref Color color)
+        void DrawEvent(float textPosY, MyProfilerBlock profilerBlock, int blockIndex, int frameIndex, int lastValidFrame, ref Color color)
         {
             float miliseconds = 0;
             long managedMemory = 0;
@@ -82,7 +82,10 @@ namespace VRageRender.Profiler
 
             float textScale = 0.7f;
 
-            m_text.Clear().Append(blockIndex + 1).Append(" ").Append(profilerBlock.Name);
+            if (blockIndex >= 0)
+                m_text.Clear().Append(blockIndex + 1).Append(" ").Append(profilerBlock.Name);
+            else
+                m_text.Clear().Append("- ").Append(profilerBlock.Name);
             DrawTextShadow(new Vector2(20, textPosY), m_text, color, textScale);
 
             float length = 500;
@@ -226,12 +229,12 @@ namespace VRageRender.Profiler
                 DrawText(new Vector2(0, 0), m_text, Color.Yellow, 0.6f);
 
                 textOffsetY = ViewportSize.Y / 2;
-                List<MyProfiler.MyProfilerBlock> children = m_selectedProfiler.SelectedRootChildren;
-                List<MyProfiler.MyProfilerBlock> sortedChildren = GetSortedChildren(frameToDraw);
+                List<MyProfilerBlock> children = m_selectedProfiler.SelectedRootChildren;
+                List<MyProfilerBlock> sortedChildren = GetSortedChildren(frameToDraw);
 
                 // Draw the 'stack trace'
                 m_text.Clear();
-                MyProfiler.MyProfilerBlock currentBlock = m_selectedProfiler.SelectedRoot;
+                MyProfilerBlock currentBlock = m_selectedProfiler.SelectedRoot;
 
                 while (currentBlock != null)
                 {
@@ -250,6 +253,13 @@ namespace VRageRender.Profiler
 
                 DrawTextShadow(new Vector2(20, textOffsetY), m_text, Color.White, 0.7f);
                 textOffsetY += eventLineSize;
+
+                if (m_selectedProfiler.SelectedRoot != null)
+                {
+                    Color whiteColor = Color.White;
+                    DrawEvent(textOffsetY, m_selectedProfiler.SelectedRoot, -1, frameToDraw, lastFrameIndex, ref whiteColor);
+                    textOffsetY += eventLineSize;
+                }
 
                 if (sortedChildren.Count > 0)
                 {
@@ -275,7 +285,7 @@ namespace VRageRender.Profiler
                     // Draw the profiler blocks
                     for (int i = 0; i < sortedChildren.Count; i++)
                     {
-                        MyProfiler.MyProfilerBlock profilerBlock = sortedChildren[i];
+                        MyProfilerBlock profilerBlock = sortedChildren[i];
 
                         Color lineColor = IndexToColor(children.IndexOf(profilerBlock));
 
@@ -330,6 +340,12 @@ namespace VRageRender.Profiler
             // Next valid index
             int windowEnd = (lastFrameIndex + 1 + MyProfiler.UPDATE_WINDOW) % MyProfiler.MAX_FRAMES;
 
+            // Draw graph for selected event
+            if (m_selectedProfiler.SelectedRoot != null)
+            {
+                DrawBlockLineSeparated(m_selectedProfiler.SelectedRoot.Miliseconds, lastFrameIndex, windowEnd, m_milisecondsGraphScale, Color.White);
+            }
+
             // Draw graphs for selected events
             var children = m_selectedProfiler.SelectedRootChildren;
             for (int i = 0; i < children.Count; i++)
@@ -355,7 +371,7 @@ namespace VRageRender.Profiler
 
             int numDecimals = 0;
             float x = m_milisecondsGraphScale.y_legend_ms_increment;
-            while(x != (int)x && numDecimals < 5)
+            while (x != (int)x && numDecimals < 5)
             {
                 x *= 10;
                 numDecimals++;

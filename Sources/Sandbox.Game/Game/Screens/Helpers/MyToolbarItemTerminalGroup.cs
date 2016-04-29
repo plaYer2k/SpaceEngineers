@@ -79,8 +79,8 @@ namespace Sandbox.Game.Screens.Helpers
             }
         }
 
-        
-        private ListReader<ITerminalAction> GetValidActions(Type blockType, ListReader<MyTerminalBlock> blocks )
+
+        private ListReader<ITerminalAction> GetValidActions(Type blockType, ListReader<MyTerminalBlock> blocks)
         {
             var allActions = MyTerminalControlFactory.GetActions(blockType);
             var validActions = new List<ITerminalAction>();
@@ -88,7 +88,7 @@ namespace Sandbox.Game.Screens.Helpers
             {
                 if (action.IsValidForGroups())
                 {
-                    bool found=false;
+                    bool found = false;
                     foreach (var block in blocks)
                         if (action.IsEnabled(block))
                         {
@@ -131,7 +131,7 @@ namespace Sandbox.Game.Screens.Helpers
             }
         }
 
-        public override ListReader<ITerminalAction> PossibleActions (MyToolbarType toolbarType)
+        public override ListReader<ITerminalAction> PossibleActions(MyToolbarType toolbarType)
         {
             return AllActions;
         }
@@ -180,7 +180,7 @@ namespace Sandbox.Game.Screens.Helpers
             var firstFunctional = FirstFunctional(blocks, owner, playerID);
 
             changed |= SetEnabled(action != null && firstFunctional != null);
-            changed |= SetIcon(genericType ? "Textures\\GUI\\Icons\\GroupIcon.dds" : blocks.ItemAt(0).BlockDefinition.Icon);
+            changed |= SetIcons(genericType ? new string[] { "Textures\\GUI\\Icons\\GroupIcon.dds" } : blocks.ItemAt(0).BlockDefinition.Icons);
             changed |= SetSubIcon(action != null ? action.Icon : null);
 
             if (action != null && !m_wasValid)
@@ -253,7 +253,7 @@ namespace Sandbox.Game.Screens.Helpers
             this.m_blockEntityId = builder.BlockEntityId;
             this.m_groupName = new StringBuilder(builder.GroupName);
             m_wasValid = true;
-            SetAction(builder.Action);
+            SetAction(builder._Action);
             return true;
         }
 
@@ -262,7 +262,7 @@ namespace Sandbox.Game.Screens.Helpers
             MyObjectBuilder_ToolbarItemTerminalGroup output = (MyObjectBuilder_ToolbarItemTerminalGroup)MyToolbarItemFactory.CreateObjectBuilder(this);
             output.GroupName = this.m_groupName.ToString();
             output.BlockEntityId = this.m_blockEntityId;
-            output.Action = this.ActionId;
+            output._Action = this.ActionId;
             return output;
         }
     }

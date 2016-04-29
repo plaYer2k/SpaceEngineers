@@ -9,6 +9,7 @@ using VRage;
 using VRage.Input;
 using VRage.Utils;
 using VRage.Compiler;
+using VRage.Game;
 using VRageMath;
 
 namespace Sandbox.Game.Gui
@@ -89,11 +90,11 @@ namespace Sandbox.Game.Gui
 
                 PushHistory(message);
 
-                if (MyFakes.ENABLE_SCRIPTS && message.StartsWith("//call"))
-                    MyScriptManager.Static.CallScript(message);
-                else if (!MyFinalBuildConstants.IS_OFFICIAL && message.StartsWith("\\"))
+                if (!MyFinalBuildConstants.IS_OFFICIAL && message.StartsWith("\\"))
+                {
                     Process(message);
-                else if (!string.IsNullOrEmpty(message))
+                }
+                else if (!string.IsNullOrWhiteSpace(message))
                 {
                     bool send = true;
                     Sandbox.ModAPI.MyAPIUtilities.Static.EnterMessage(message, ref send);

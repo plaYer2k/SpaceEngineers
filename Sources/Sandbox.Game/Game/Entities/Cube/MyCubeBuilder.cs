@@ -42,6 +42,7 @@ using VRage.Game.Components;
 using VRage.Game.Models;
 using VRage.Game.Entity;
 using VRage.Game;
+using Sandbox.Game.Audio;
 
 #endregion
 
@@ -56,8 +57,20 @@ namespace Sandbox.Game.Entities
             public Vector3D Position;
             public Vector3 Forward;
             public Vector3 Up;
-
         }
+
+        [Flags]
+        public enum SpawnFlags : ushort
+        {
+            None                          = 0,
+            AddToScene                    = 1 << 0,
+            CreatePhysics                 = 1 << 1,
+            EnableSmallTolargeConnections = 1 << 2,
+            SpawnAsMaster                 = 1 << 3,
+
+            Default                       = AddToScene | CreatePhysics | EnableSmallTolargeConnections
+        }
+
         // These are names of ME controls. It's a hack to avoid defining them twice (in Sandbox.Game and Medieval).
         public const string ME_SWITCH_STAGES_CONTROL_NAME = "SWITCH_STAGES";
         public const string ME_PICK_BLOCK_CONTROL_NAME = "PICK_BLOCK";
@@ -221,7 +234,7 @@ namespace Sandbox.Game.Entities
         bool m_useSymmetry = true;
         public bool UseSymmetry
         {
-            get { return m_useSymmetry && (MySession.Static != null && (MySession.Static.CreativeMode||MySession.Static.IsAdminModeEnabled)) && !(MySession.Static.ControlledEntity is MyShipController); }
+            get { return m_useSymmetry && (MySession.Static != null && (MySession.Static.CreativeMode || MySession.Static.IsAdminModeEnabled(Sync.MyId))) && !(MySession.Static.ControlledEntity is MyShipController); }
             set
             {
                 if (m_useSymmetry != value)
@@ -1452,9 +1465,8 @@ namespace Sandbox.Game.Entities
 
                 }
 
-                if (CurrentGrid != null)
+                if (CurrentGrid != null && IsActivated)
                 {
-
                     if (MyControllerHelper.IsControl(context, MyControlsSpace.SYMMETRY_SWITCH, MyControlStateType.NEW_PRESSED) && !(MySession.Static.ControlledEntity is MyShipController))
                     {
                         if (BlockCreationIsActivated)
@@ -1651,7 +1663,7 @@ namespace Sandbox.Game.Entities
                         StopBuilding();
                     }               
                 } //if (CurrentGrid != null)
-                else if (CurrentVoxelMap != null)
+                else if (CurrentVoxelMap != null && IsActivated)
                 {
                     //RKTODO - creation of blocks in line or plane will be done when server function will be prepared 
                     // (need to create grid with one block - the first target and then build all other blocks in the grid)
@@ -2268,7 +2280,7 @@ namespace Sandbox.Game.Entities
             MatrixD drawMatrix = gizmoSpace.m_worldMatrixAdd;
 
             BuildComponent.GetGridSpawnMaterials(CurrentBlockDefinition, drawMatrix, false);
-            if (MySession.Static.IsAdminModeEnabled == false)
+            if (MySession.Static.IsAdminModeEnabled(Sync.MyId) == false)
             {
                 gizmoSpace.m_buildAllowed &= BuildComponent.HasBuildingMaterials(MySession.Static.LocalCharacter);
             }
@@ -2398,12 +2410,12 @@ namespace Sandbox.Game.Entities
             gizmoSpace.m_worldMatrixAdd = drawMatrix;
 
             BuildComponent.GetGridSpawnMaterials(CurrentBlockDefinition, drawMatrix, true);
-            if (MySession.Static.IsAdminModeEnabled == false)
+            if (MySession.Static.IsAdminModeEnabled(Sync.MyId) == false)
             {
                 gizmoSpace.m_buildAllowed &= BuildComponent.HasBuildingMaterials(MySession.Static.LocalCharacter);
             }
 
-            if (MySession.Static.SurvivalMode && !SpectatorIsBuilding &&MySession.Static.IsAdminModeEnabled == false)
+            if (MySession.Static.SurvivalMode && !SpectatorIsBuilding && MySession.Static.IsAdminModeEnabled(Sync.MyId) == false)
             {
                 BoundingBoxD gizmoBox = localAABB.Transform(ref drawMatrix);
 
@@ -2498,14 +2510,14 @@ namespace Sandbox.Game.Entities
 
                     ProfilerShort.BeginNextBlock("IsAdminModeEnabled");
                     MyCubeBuilder.BuildComponent.GetBlockPlacementMaterials(gizmoSpace.m_blockDefinition, gizmoSpace.m_addPos, gizmoAddOrientation, CurrentGrid);
-                    if (MySession.Static.IsAdminModeEnabled == false)
+                    if (MySession.Static.IsAdminModeEnabled(Sync.MyId) == false)
                     {
                         gizmoSpace.m_buildAllowed &= MyCubeBuilder.BuildComponent.HasBuildingMaterials(MySession.Static.LocalCharacter);
                     }
 
                     ProfilerShort.BeginNextBlock("SurvivalMode");
                     // In survival, check whether you're close enough, and have enough materials or haven't built for long enough
-                    if (!PlacingSmallGridOnLargeStatic && MySession.Static.SurvivalMode&& MySession.Static.IsAdminModeEnabled == false && !SpectatorIsBuilding)
+                    if (!PlacingSmallGridOnLargeStatic && MySession.Static.SurvivalMode && MySession.Static.IsAdminModeEnabled(Sync.MyId) == false && !SpectatorIsBuilding)
                     {
                         Vector3 localMin = (m_gizmo.SpaceDefault.m_min - new Vector3(0.5f)) * CurrentGrid.GridSize;
                         Vector3 localMax = (m_gizmo.SpaceDefault.m_max + new Vector3(0.5f)) * CurrentGrid.GridSize;
@@ -2637,7 +2649,7 @@ namespace Sandbox.Game.Entities
                     ProfilerShort.BeginNextBlock("CheckConnectivity");
                     if (PlacingSmallGridOnLargeStatic)
                     {
-                        if (MySession.Static.SurvivalMode && !SpectatorIsBuilding && MySession.Static.IsAdminModeEnabled == false)
+                        if (MySession.Static.SurvivalMode && !SpectatorIsBuilding && MySession.Static.IsAdminModeEnabled(Sync.MyId) == false)
                         {
                             MatrixD invDrawMatrix = Matrix.Invert(drawMatrix);
 
@@ -2936,6 +2948,8 @@ namespace Sandbox.Game.Entities
             if (m_blocksBuildQueue.Count > 0)
             {
                 MyGuiAudio.PlaySound(MyGuiSounds.HudPlaceBlock);
+                if (MyMusicController.Static != null)
+                    MyMusicController.Static.Building(2000);
                 CurrentGrid.BuildBlocks(MyPlayer.SelectedColor, m_blocksBuildQueue, MySession.Static.LocalCharacterEntityId, MySession.Static.LocalPlayerId);
             }
         }
@@ -2955,7 +2969,7 @@ namespace Sandbox.Game.Entities
                     position.Forward = (Vector3)gridWorldMatrix.Forward;
                     position.Up = (Vector3)gridWorldMatrix.Up;
 
-                    MyMultiplayer.RaiseStaticEvent(s => RequestGridSpawn, MySession.Static.LocalCharacterEntityId, (DefinitionIdBlit)blockDefinition.Id, position, true, MySession.Static.IsAdminModeEnabled);
+                    MyMultiplayer.RaiseStaticEvent(s => RequestGridSpawn, MySession.Static.LocalCharacterEntityId, (DefinitionIdBlit)blockDefinition.Id, position, true, MySession.Static.IsAdminModeEnabled(Sync.MyId));
                 }
                 else
                 {
@@ -2972,7 +2986,9 @@ namespace Sandbox.Game.Entities
                 position.Forward = (Vector3)gridWorldMatrix.Forward;
                 position.Up = (Vector3)gridWorldMatrix.Up;
 
-                MyMultiplayer.RaiseStaticEvent(s => RequestGridSpawn, MySession.Static.LocalCharacterEntityId, (DefinitionIdBlit)blockDefinition.Id, position, true, MySession.Static.IsAdminModeEnabled);
+                if (MyMusicController.Static != null)
+                    MyMusicController.Static.Building(2000);
+                MyMultiplayer.RaiseStaticEvent(s => RequestGridSpawn, MySession.Static.LocalCharacterEntityId, (DefinitionIdBlit)blockDefinition.Id, position, true, MySession.Static.IsAdminModeEnabled(Sync.MyId));
                 MyGuiAudio.PlaySound(MyGuiSounds.HudPlaceBlock);
             }
             else if (DynamicMode)
@@ -2981,7 +2997,9 @@ namespace Sandbox.Game.Entities
                 position.Forward = (Vector3)worldMatrixAdd.Forward;
                 position.Up = (Vector3)worldMatrixAdd.Up;
 
-                MyMultiplayer.RaiseStaticEvent(s => RequestGridSpawn, MySession.Static.LocalCharacterEntityId, (DefinitionIdBlit)blockDefinition.Id, position, false, MySession.Static.IsAdminModeEnabled);
+                if (MyMusicController.Static != null)
+                    MyMusicController.Static.Building(2000);
+                MyMultiplayer.RaiseStaticEvent(s => RequestGridSpawn, MySession.Static.LocalCharacterEntityId, (DefinitionIdBlit)blockDefinition.Id, position, false, MySession.Static.IsAdminModeEnabled(Sync.MyId));
                 MyGuiAudio.PlaySound(MyGuiSounds.HudPlaceBlock);
             }
             else
@@ -3128,6 +3146,8 @@ namespace Sandbox.Game.Entities
                 {
                     if (CurrentGrid != null && m_blocksBuildQueue.Count > 0)
                     {
+                        if (MySession.Static != null && builder == MySession.Static.LocalCharacter && MyMusicController.Static != null)
+                            MyMusicController.Static.Building(2000);
                         MyGuiAudio.PlaySound(MyGuiSounds.HudPlaceBlock);
                         if (builder == MySession.Static.LocalCharacter)
                             MySession.Static.TotalBlocksCreated++;
@@ -4054,7 +4074,7 @@ namespace Sandbox.Game.Entities
                     area.DefinitionId = definitionId;
                     area.ColorMaskHSV = MyPlayer.SelectedColor.PackHSVToUint();
 
-                    CurrentGrid.BuildBlocks(MySession.Static.LocalPlayerId, ref area);
+                    CurrentGrid.BuildBlocks(ref area, MySession.Static.LocalCharacterEntityId, MySession.Static.LocalPlayerId);
 
                     // TODO: There will be message send instead of this, this will called and iterated after message success
                     //BuildByGizmo(ref min, ref max, ref stepDelta, ref counter, ref centerPos, ref orientation, ref definitionId);
@@ -4270,6 +4290,9 @@ namespace Sandbox.Game.Entities
             {
                 return;
             }
+
+            if (!MyFakes.ENABLE_SMALL_GRID_BLOCK_INFO && block != null && block.CubeSize == MyCubeSize.Small)
+                return;
 
             MyHud.BlockInfo.LoadDefinition(block, MyCubeBuilder.BuildComponent.TotalMaterials);
             MyHud.BlockInfo.Visible = true;
@@ -4667,23 +4690,7 @@ namespace Sandbox.Game.Entities
                 ActivateMultiBlockCreationClipboard(multiBlockDefinition, gridBuilder, Vector3.Zero, IntersectionDistance);
         }
 
-        static void SpawnGrid(MyCubeBlockDefinition definition, MatrixD worldMatrix, MyEntity builder, bool isStatic)
-        {
-            Debug.Assert(Sync.IsServer);
-            MyCubeGrid grid = null;
-            if (isStatic)
-                grid = SpawnStaticGrid(definition, builder, worldMatrix);
-            else
-                grid = SpawnDynamicGrid(definition, builder, worldMatrix);
-
-            if (grid != null)
-            {
-                AfterGridBuild(builder, grid);
-            }
-
-        }
-
-        public static void AfterGridBuild(MyEntity builder, MyCubeGrid grid)
+        public static void AfterGridBuild(MyEntity builder, MyCubeGrid grid, bool instantBuild)
         {
             if (grid != null)
             {
@@ -4717,7 +4724,7 @@ namespace Sandbox.Game.Entities
 
                     if (Sync.IsServer)
                     {
-                        MyCubeBuilder.BuildComponent.AfterGridCreated(grid, builder);
+                        MyCubeBuilder.BuildComponent.AfterSuccessfulBuild(builder, instantBuild);
                     }
                 }
                 else
@@ -4728,8 +4735,7 @@ namespace Sandbox.Game.Entities
         /// <summary>
         /// Spawn static grid - must have identity rotation matrix! If dontAdd is true, grid won't be added to enitites. Also it won't have entityId set.
         /// </summary>
-        public static MyCubeGrid SpawnStaticGrid(MyCubeBlockDefinition blockDefinition, MyEntity builder, MatrixD worldMatrix, bool dontAdd = false, bool createPhysics = true, 
-            bool enableSmallToLargeConnections = true)
+        public static MyCubeGrid SpawnStaticGrid(MyCubeBlockDefinition blockDefinition, MyEntity builder, MatrixD worldMatrix, SpawnFlags spawnFlags = SpawnFlags.Default)
         {
             Debug.Assert(Sync.IsServer, "Only server can spawn grids! Clients have to send requests!");
 
@@ -4737,10 +4743,10 @@ namespace Sandbox.Game.Entities
             gridBuilder.PositionAndOrientation = new MyPositionAndOrientation(worldMatrix.Translation, Vector3.Forward, Vector3.Up);
             gridBuilder.GridSizeEnum = blockDefinition.CubeSize;
             gridBuilder.IsStatic = true;
-            gridBuilder.CreatePhysics = createPhysics;
-            gridBuilder.EnableSmallToLargeConnections = enableSmallToLargeConnections;
+            gridBuilder.CreatePhysics = (spawnFlags & SpawnFlags.CreatePhysics) != SpawnFlags.None;
+            gridBuilder.EnableSmallToLargeConnections = (spawnFlags & SpawnFlags.EnableSmallTolargeConnections) != SpawnFlags.None;
             gridBuilder.PersistentFlags |= MyPersistentEntityFlags2.Enabled | MyPersistentEntityFlags2.InScene;
-            if (!dontAdd)
+            if ((spawnFlags & SpawnFlags.AddToScene) != SpawnFlags.None)
                 gridBuilder.EntityId = MyEntityIdentifier.AllocateId();
 
             // Block must be placed on (0,0,0) coordinate
@@ -4748,29 +4754,28 @@ namespace Sandbox.Game.Entities
             blockBuilder.Orientation = Quaternion.CreateFromForwardUp(Vector3I.Round(worldMatrix.Forward), Vector3I.Round(worldMatrix.Up));
             Vector3I sizeRotated = Vector3I.Abs(Vector3I.Round(Vector3D.TransformNormal((Vector3)blockDefinition.Size, worldMatrix)));
             blockBuilder.Min = sizeRotated / 2 - sizeRotated + Vector3I.One;
-            if (!dontAdd)
+            if ((spawnFlags & SpawnFlags.AddToScene) != SpawnFlags.None)
                 blockBuilder.EntityId = MyEntityIdentifier.AllocateId();
             
-            MyCubeBuilder.BuildComponent.BeforeCreateBlock(blockDefinition, builder, blockBuilder);
+            MyCubeBuilder.BuildComponent.BeforeCreateBlock(blockDefinition, builder, blockBuilder, buildAsAdmin: (spawnFlags & SpawnFlags.SpawnAsMaster) != SpawnFlags.None);
 
             gridBuilder.CubeBlocks.Add(blockBuilder);
 
             MyCubeGrid grid;
 
-            if (dontAdd)
-            {
-                grid = MyEntities.CreateFromObjectBuilder(gridBuilder) as MyCubeGrid;
-            }
-            else
+            if ((spawnFlags & SpawnFlags.AddToScene) != SpawnFlags.None)
             {
                 grid = MyEntities.CreateFromObjectBuilderAndAdd(gridBuilder) as MyCubeGrid;
             }
-            
+            else
+            {
+                grid = MyEntities.CreateFromObjectBuilder(gridBuilder) as MyCubeGrid;
+            }
 
             return grid;
         }
 
-        public static MyCubeGrid SpawnDynamicGrid(MyCubeBlockDefinition blockDefinition, MyEntity builder, MatrixD worldMatrix, long entityId = 0, bool noInit = false)
+        public static MyCubeGrid SpawnDynamicGrid(MyCubeBlockDefinition blockDefinition, MyEntity builder, MatrixD worldMatrix, long entityId = 0, SpawnFlags spawnFlags = SpawnFlags.Default)
         {
             var gridBuilder = MyObjectBuilderSerializer.CreateNewObject<MyObjectBuilder_CubeGrid>();
             gridBuilder.PositionAndOrientation = new MyPositionAndOrientation(ref worldMatrix);
@@ -4782,7 +4787,7 @@ namespace Sandbox.Game.Entities
             var blockBuilder = MyObjectBuilderSerializer.CreateNewObject(blockDefinition.Id) as MyObjectBuilder_CubeBlock;
             blockBuilder.Orientation = Quaternion.CreateFromForwardUp(Vector3I.Forward, Vector3I.Up);
             blockBuilder.Min = blockDefinition.Size / 2 - blockDefinition.Size + Vector3I.One;
-            MyCubeBuilder.BuildComponent.BeforeCreateBlock(blockDefinition, builder, blockBuilder);
+            MyCubeBuilder.BuildComponent.BeforeCreateBlock(blockDefinition, builder, blockBuilder, buildAsAdmin: (spawnFlags & SpawnFlags.SpawnAsMaster) != SpawnFlags.None);
 
             gridBuilder.CubeBlocks.Add(blockBuilder);
 
@@ -5010,7 +5015,7 @@ namespace Sandbox.Game.Entities
             foreach (var blockInCompoundID in blockInCompoundIDs)
             {
                 Vector3I cube = blockInCompoundID.Item1.Min;
-                for (Vector3I.RangeIterator it = new Vector3I.RangeIterator(ref blockInCompoundID.Item1.Min, ref blockInCompoundID.Item1.Max); it.IsValid(); it.GetNext(out cube))
+                for (Vector3I_RangeIterator it = new Vector3I_RangeIterator(ref blockInCompoundID.Item1.Min, ref blockInCompoundID.Item1.Max); it.IsValid(); it.GetNext(out cube))
                 {
                     outPositions.Add(cube);
                 }
@@ -5018,23 +5023,19 @@ namespace Sandbox.Game.Entities
         }
 
         [Event,Reliable,Server]
-        static void RequestGridSpawn(long builderEntityId, DefinitionIdBlit definition,BuildData position, bool isStatic, bool instantBuild)
+        static void RequestGridSpawn(long builderEntityId, DefinitionIdBlit definition, BuildData position, bool isStatic, bool instantBuild)
         {
             Debug.Assert(BuildComponent != null, "The build component was not set in cube builder!");
 
             MyEntity builder = null;
             bool isAdmin = (MyEventContext.Current.IsLocallyInvoked || MySession.Static.HasPlayerAdminRights(MyEventContext.Current.Sender.Value));
-            if ((instantBuild && isAdmin) == false)
-            {
-                MyEntities.TryGetEntityById(builderEntityId, out builder);
-            }
+            MyEntities.TryGetEntityById(builderEntityId, out builder);
 
-            var blockDefinition = Definitions.MyDefinitionManager.Static.GetCubeBlockDefinition(definition);
+            var blockDefinition = MyDefinitionManager.Static.GetCubeBlockDefinition(definition);
             MatrixD worldMatrix = MatrixD.CreateWorld(position.Position, position.Forward, position.Up);
 
             BuildComponent.GetGridSpawnMaterials(blockDefinition, worldMatrix, isStatic);
-            bool hasBuildMat = MyCubeBuilder.BuildComponent.HasBuildingMaterials(builder);
-            hasBuildMat |= isAdmin;
+            bool hasBuildMat = (isAdmin && instantBuild) || MyCubeBuilder.BuildComponent.HasBuildingMaterials(builder);
 
             bool canSpawn = true;
             // Try spawning "fake" grid in that place, if fail it means something already there.
@@ -5050,7 +5051,21 @@ namespace Sandbox.Game.Entities
 
             if (!canSpawn) return;
 
-            SpawnGrid(blockDefinition, worldMatrix, builder, isStatic);
+            MyCubeGrid grid = null;
+            SpawnFlags flags = SpawnFlags.Default;
+            if (isAdmin && instantBuild)
+            {
+                flags |= SpawnFlags.SpawnAsMaster;
+            }
+            if (isStatic)
+                grid = SpawnStaticGrid(blockDefinition, builder, worldMatrix, spawnFlags: flags);
+            else
+                grid = SpawnDynamicGrid(blockDefinition, builder, worldMatrix, spawnFlags: flags);
+
+            if (grid != null)
+            {
+                AfterGridBuild(builder, grid, instantBuild);
+            }
         }
 
         /// <summary>
@@ -5061,7 +5076,7 @@ namespace Sandbox.Game.Entities
         {
             bool canSpawn = true;
             // TODO: this temporary grid has to be removed from here - causes many problems.
-            MyCubeGrid tempGrid = MyCubeBuilder.SpawnStaticGrid(blockDefinition, builder, worldMatrix, dontAdd: true, createPhysics: false, enableSmallToLargeConnections: false);
+            MyCubeGrid tempGrid = MyCubeBuilder.SpawnStaticGrid(blockDefinition, builder, worldMatrix, SpawnFlags.None);
             // tempGrid can be null when entity init fails.
             if (tempGrid == null)
                 return false;

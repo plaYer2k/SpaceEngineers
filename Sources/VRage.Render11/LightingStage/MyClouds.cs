@@ -113,7 +113,7 @@ namespace VRageRender
             float angularVelocity,
             float radiansAroundAxis)
         {
-            MeshId mesh = MyMeshes.GetMeshId(X.TEXT(model));
+            MeshId mesh = MyMeshes.GetMeshId(X.TEXT_(model));
             MyCloudLayer.MyCloudTextureInfo textureInfo;
             if (textures != null && textures.Count > 0) // TODO: Multiple textures
             {
@@ -159,7 +159,7 @@ namespace VRageRender
             m_modifiableCloudLayerData.Remove(ID);
         }
 
-        internal unsafe static void Render()
+        internal static unsafe void Render()
         {
             if (m_cloudLayers.Count == 0)
                 return;

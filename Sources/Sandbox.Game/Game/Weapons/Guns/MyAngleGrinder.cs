@@ -1,5 +1,6 @@
 ﻿#region Using
 
+using System;
 using Sandbox.Common;
 using Sandbox.Common.ObjectBuilders;
 using Sandbox.Common.ObjectBuilders.Definitions;
@@ -22,6 +23,9 @@ using VRageMath;
 using Sandbox.Engine.Networking;
 using VRage.Game;
 using VRage.Game.Entity;
+using VRage.Game.ModAPI;
+using VRage.Library.Utils;
+using Sandbox.Game.Audio;
 
 #endregion
 
@@ -46,6 +50,8 @@ namespace Sandbox.Game.Weapons
         float m_rotationSpeed;
 
         MyDefinitionId m_physicalItemId = new MyDefinitionId(typeof(MyObjectBuilder_PhysicalGunObject), "AngleGrinderItem");
+        private float m_grinderCameraMaxShakeIntensity = 1.5f;
+        private double m_grinderCameraMeanShakeIntensity = 1.0f;
 
         public MyAngleGrinder()
             : base(250)
@@ -130,11 +136,11 @@ namespace Sandbox.Game.Weapons
             }
         }
 
-        public override void Shoot(MyShootActionEnum action, Vector3 direction, string gunAction)
+        public override void Shoot(MyShootActionEnum action, Vector3 direction, Vector3D? overrideWeaponPos, string gunAction)
         {
             MyAnalyticsHelper.ReportActivityStartIf(!m_activated, this.Owner, "Grinding", "Character", "HandTools", "AngleGrinder", true);
 
-            base.Shoot(action, direction, gunAction);
+            base.Shoot(action, direction, overrideWeaponPos, gunAction);
 
             if (action == MyShootActionEnum.PrimaryAction && IsPreheated && Sync.IsServer && m_activated)
             {
@@ -212,6 +218,9 @@ namespace Sandbox.Game.Weapons
                 block.DecreaseMountLevel(damageInfo.Amount, CharacterInventory);
                 block.MoveItemsFromConstructionStockpile(CharacterInventory);
 
+                if (MySession.Static != null && Owner == MySession.Static.LocalCharacter && MyMusicController.Static != null)
+                    MyMusicController.Static.Building(250);
+
                 if (block.UseDamageSystem)
                     MyDamageSystem.Static.RaiseAfterDamageApplied(block, damageInfo);
                     
@@ -225,6 +234,9 @@ namespace Sandbox.Game.Weapons
                 }
                 if (block.BlockDefinition.PhysicalMaterial.Id.SubtypeName.Length > 0)
                     target = block.BlockDefinition.PhysicalMaterial.Id.SubtypeId;
+
+                if (Owner != null && Owner.ControllerInfo.IsLocallyControlled() && (Owner.IsInFirstPersonView || Owner.ForceFirstPersonCamera))
+                    PerformCameraShake();
             }
 
             var targetDestroyable = GetTargetDestroyable();
@@ -243,6 +255,9 @@ namespace Sandbox.Game.Weapons
                 targetDestroyable.DoDamage(20, MyDamageType.Grind, true, attackerId: Owner != null ? Owner.EntityId : 0);
                 if (targetDestroyable is MyCharacter)
                     target = MyStringHash.GetOrCompute((targetDestroyable as MyCharacter).Definition.PhysicalMaterial);
+
+                if (Owner != null && Owner.ControllerInfo.IsLocallyControlled() && (Owner.IsInFirstPersonView || Owner.ForceFirstPersonCamera))
+                    PerformCameraShake();
             }
 
             if (block != null || targetDestroyable != null)
@@ -269,6 +284,16 @@ namespace Sandbox.Game.Weapons
         {
             if (m_soundEmitter.Sound != null && m_soundEmitter.Sound.IsPlaying)
             m_soundEmitter.StopSound(true);
+        }
+
+        public void PerformCameraShake()
+        {
+            if (MySector.MainCamera == null)
+                return;
+
+            float intensity = (float)(-Math.Log(MyRandom.Instance.NextDouble()) * m_grinderCameraMeanShakeIntensity);
+            intensity = MathHelper.Clamp(intensity, 0, m_grinderCameraMaxShakeIntensity);
+            MySector.MainCamera.CameraShake.AddShake(intensity);
         }
     }
 }

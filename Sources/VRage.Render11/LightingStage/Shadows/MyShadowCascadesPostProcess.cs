@@ -66,7 +66,7 @@ namespace VRageRender
         private unsafe void InitConstantBuffer()
         {
             if(m_inverseConstants == ConstantsBufferId.NULL)
-                m_inverseConstants = MyHwBuffers.CreateConstantsBuffer(sizeof(Matrix));
+                m_inverseConstants = MyHwBuffers.CreateConstantsBuffer(sizeof(Matrix), "MyShadowCascadesPostProcess");
         }
 
         Vector2I GetThreadsPerThreadGroup(Vector2I textureSizeInPixels)
@@ -127,7 +127,7 @@ namespace VRageRender
         private unsafe void InitVertexBuffer(int numberOfCascades)
         {
             DestroyVertexBuffer();
-            m_cascadesBoundingsVertices = MyHwBuffers.CreateVertexBuffer(8 * numberOfCascades, sizeof(Vector3), BindFlags.VertexBuffer, ResourceUsage.Dynamic);
+            m_cascadesBoundingsVertices = MyHwBuffers.CreateVertexBuffer(8 * numberOfCascades, sizeof(Vector3), BindFlags.VertexBuffer, ResourceUsage.Dynamic, null, "MyShadowCascadesPostProcess");
         }
 
         private void DestroyVertexBuffer()
@@ -158,7 +158,7 @@ namespace VRageRender
             indices[30] = 1; indices[31] = 0; indices[32] = 4;
             indices[33] = 1; indices[34] = 4; indices[35] = 5;
 
-            m_cubeIB = MyHwBuffers.CreateIndexBuffer(indexCount, Format.R16_UInt, BindFlags.IndexBuffer, ResourceUsage.Immutable, new IntPtr(indices));
+            m_cubeIB = MyHwBuffers.CreateIndexBuffer(indexCount, Format.R16_UInt, BindFlags.IndexBuffer, ResourceUsage.Immutable, new IntPtr(indices), "MyScreenDecals");
         }
 
         private void DestroyIndexBuffer()
@@ -195,7 +195,7 @@ namespace VRageRender
                 renderContext.BindGBufferForRead(0, MyGBuffer.Main);
                 deviceContext.OutputMerger.SetTargets((DepthStencilView)null, (RenderTargetView)targetArray.SubresourceRtv(subresourceIndex));
                 deviceContext.PixelShader.SetShaderResource(0, firstCascades.CascadeShadowmapArray.SubresourceSrv(subresourceIndex));
-                deviceContext.PixelShader.SetShaderResource(1, secondCascades.CascadeShadowmapArray.ShaderView);
+                deviceContext.PixelShader.SetShaderResource(1, secondCascades.CascadeShadowmapArray.SRV);
                 //deviceContext.PixelShader.SetShaderResource(4, MyGBuffer.Main.DepthStencil.m_SRV_stencil);
                 renderContext.SetPS(m_combinePS);
 
@@ -233,10 +233,10 @@ namespace VRageRender
 
             deviceContext.ComputeShader.SetShaderResource(0, MyRender11.MultisamplingEnabled ? MyScreenDependants.m_resolvedDepth.m_SRV_depth : MyGBuffer.Main.DepthStencil.m_SRV_depth);
             deviceContext.ComputeShader.SetShaderResource(1, MyGBuffer.Main.DepthStencil.m_SRV_stencil);
-            deviceContext.ComputeShader.SetSampler(MyCommon.SHADOW_SAMPLER_SLOT, MyRender11.m_shadowmapSamplerState);
+            deviceContext.ComputeShader.SetSampler(MyCommon.SHADOW_SAMPLER_SLOT, SamplerStates.m_shadowmap);
             deviceContext.ComputeShader.SetConstantBuffer(0, MyCommon.FrameConstants);
             deviceContext.ComputeShader.SetConstantBuffer(4, cascadeConstantBuffer);
-            deviceContext.ComputeShader.SetShaderResource(MyCommon.CASCADES_SM_SLOT, cascadeArray.ShaderView);
+            deviceContext.ComputeShader.SetShaderResource(MyCommon.CASCADES_SM_SLOT, cascadeArray.SRV);
 
             deviceContext.Dispatch(m_threadGroupCountX, m_threadGroupCountY, 1);
 
@@ -245,7 +245,7 @@ namespace VRageRender
             deviceContext.ComputeShader.SetShaderResource(0, null);
 
             if(MyRender11.Settings.EnableShadowBlur)
-                MyBlur.Run(postprocessTarget.Rtv, MyRender11.CascadesHelper.Rtv, MyRender11.CascadesHelper.ShaderView, postprocessTarget.ShaderView, depthDiscardThreshold: 0.2f);
+                MyBlur.Run(postprocessTarget.Rtv, MyRender11.CascadesHelper.Rtv, MyRender11.CascadesHelper.SRV, postprocessTarget.SRV, depthDiscardThreshold: 0.2f);
 
             MyGpuProfiler.IC_EndBlock();
         }

@@ -22,6 +22,20 @@ namespace VRageRender
         public bool VSync;
         public bool DebugDrawOnly;
 
+#if BLIT
+        public MyRenderDeviceSettings(int adapter)
+        {
+            this.AdapterOrdinal = adapter;
+            this.WindowMode = MyWindowModeEnum.Window;
+            this.BackBufferWidth = 0;
+            this.BackBufferHeight = 0;
+            this.RefreshRate = 0;
+            this.VSync = true;
+
+            DebugDrawOnly = false;
+        }
+#endif
+
         public MyRenderDeviceSettings(int adapter, MyWindowModeEnum windowMode, int width, int height, int refreshRate, bool vsync)
         {
             this.AdapterOrdinal = adapter;
@@ -121,6 +135,7 @@ namespace VRageRender
         public bool DebugRenderClipmapCells = false;
         public static bool DebugClipmapLodColor = false;
         public bool SkipLodUpdates = false;
+        public bool BlurCopyOnDepthStencilFail = false;
 
         bool m_enableEnvironmentMapAmbient = true;
         public bool EnableEnvironmentMapAmbient
@@ -195,7 +210,15 @@ namespace VRageRender
         public bool DisplayEmissive = false;
         public bool DisplayEdgeMask = false;
         public bool DisplayNDotL = false;
+        public bool DisplayDepth = false;
         public bool DisplayStencil = false;
+
+        public float RgbMultiplier = 1.0f;
+        public float MetalnessMultiplier = 1.0f;
+        public float GlossMultiplier = 1.0f;
+        public float AoMultiplier = 1.0f;
+        public float EmissiveMultiplier = 1.0f;
+        public float ColorMaskMultiplier = 1.0f;
 
         public bool DisplayAmbientDiffuse = false;
         public bool DisplayAmbientSpecular = false;
@@ -289,6 +312,8 @@ namespace VRageRender
         public bool EnableFoliageDebug = false;
         public bool FreezeFoliageViewer = false;
 
+        public bool DebugDrawDecals = false;
+
         public static bool PerInstanceLods = false;
 
         internal void Synchronize(MyRenderSettings settings)
@@ -378,7 +403,15 @@ namespace VRageRender
             DisplayGbufferAO = settings.DisplayGbufferAO;
             DisplayEmissive = settings.DisplayEmissive;
             DisplayEdgeMask = settings.DisplayEdgeMask;
+            DisplayDepth = settings.DisplayDepth;
             DisplayStencil = settings.DisplayStencil;
+
+            RgbMultiplier = settings.RgbMultiplier;
+            MetalnessMultiplier = settings.MetalnessMultiplier;
+            GlossMultiplier = settings.GlossMultiplier;
+            AoMultiplier = settings.AoMultiplier;
+            EmissiveMultiplier = settings.EmissiveMultiplier;
+            ColorMaskMultiplier = settings.ColorMaskMultiplier;
 
             DisplayAmbientDiffuse = settings.DisplayAmbientDiffuse;
             DisplayAmbientSpecular = settings.DisplayAmbientSpecular;
@@ -510,7 +543,8 @@ namespace VRageRender
     {
         LOW,
 		MEDIUM,
-        HIGH
+        HIGH,
+        DISABLED,
     }
 
     /// <summary>

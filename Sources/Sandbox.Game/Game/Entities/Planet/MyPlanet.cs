@@ -477,6 +477,9 @@ namespace Sandbox.Game.Entities
 
             base.Init(m_planetInitValues.StorageName, m_planetInitValues.Storage, m_planetInitValues.PositionMinCorner);
 
+            // Set storage as caching:
+            ((MyStorageBase)Storage).InitWriteCache();
+
             NeedsUpdate |= MyEntityUpdateEnum.EACH_100TH_FRAME | MyEntityUpdateEnum.EACH_FRAME | MyEntityUpdateEnum.BEFORE_NEXT_FRAME;
 
             m_storage.RangeChanged += storage_RangeChangedPlanet;
@@ -633,7 +636,7 @@ namespace Sandbox.Game.Entities
 
             if (m_physicsShapes != null)
             {
-                for (var it = new Vector3I.RangeIterator(ref minSector, ref maxSector);
+                for (var it = new Vector3I_RangeIterator(ref minSector, ref maxSector);
                     it.IsValid(); it.MoveNext())
                 {
                     if (m_physicsShapes.TryGetValue(it.Current, out voxelMap))
@@ -653,7 +656,7 @@ namespace Sandbox.Game.Entities
             ProfilerShort.End();
         }
 
-        private MyVoxelPhysics CreateVoxelPhysics(ref Vector3I increment, ref Vector3I.RangeIterator it)
+        private MyVoxelPhysics CreateVoxelPhysics(ref Vector3I increment, ref Vector3I_RangeIterator it)
         {
             if (m_physicsShapes == null)
             {
@@ -763,7 +766,7 @@ namespace Sandbox.Game.Entities
             minCorner /= PHYSICS_SECTOR_SIZE_METERS;
             maxCorner /= PHYSICS_SECTOR_SIZE_METERS;
 
-            for (var it = new Vector3I.RangeIterator(ref minCorner, ref maxCorner);
+            for (var it = new Vector3I_RangeIterator(ref minCorner, ref maxCorner);
                 it.IsValid(); it.MoveNext())
             {
                 ProfilerShort.Begin("Myplanet::create physics shape");
@@ -1019,7 +1022,7 @@ namespace Sandbox.Game.Entities
             minCorner /= PHYSICS_SECTOR_SIZE_METERS;
             maxCorner /= PHYSICS_SECTOR_SIZE_METERS;
 
-            for (var it = new Vector3I.RangeIterator(ref minCorner, ref maxCorner);
+            for (var it = new Vector3I_RangeIterator(ref minCorner, ref maxCorner);
                 it.IsValid(); it.MoveNext())
             {
                if(m_physicsShapes.ContainsKey(it.Current))

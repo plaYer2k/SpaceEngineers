@@ -14,6 +14,7 @@ namespace VRage.Audio
         Dictionary<MyCueId, MySoundData>.ValueCollection CueDefinitions { get; }
         List<MyStringId> GetCategories();
         MySoundData GetCue(MyCueId cue);
+        Dictionary<MyStringId, List<MyCueId>> GetAllMusicCues();
 
         //IMyCueBank CueBank { get; }
         MySoundData SoloCue
@@ -95,9 +96,23 @@ namespace VRage.Audio
             set;
         }
 
+        bool UseVolumeLimiter
+        {
+            get;
+            set;
+        }
+
+        bool UseSameSoundLimiter
+        {
+            get;
+            set;
+        }
+        void SetSameSoundLimiter();
+
         event Action<bool> VoiceChatEnabled;
 
         void PlayMusic(MyMusicTrack? track = null, int priorityForRandom = 0);
+        IMySourceVoice PlayMusicCue(MyCueId musicCue);
         void StopMusic();
         void MuteHud(bool mute);
         
